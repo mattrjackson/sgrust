@@ -1,5 +1,6 @@
 // Function to compute the Lagrange basis polynomials at a given point x
 // points: interpolation points, values: values at those points
+#[inline]
 pub fn lagrange_weights(x: f64, coeffs: &[f64], points: &[f64]) -> Vec<f64> 
 {        
     let mut weights = vec![0.0; points.len()];    
@@ -26,6 +27,7 @@ pub fn lagrange_weights(x: f64, coeffs: &[f64], points: &[f64]) -> Vec<f64>
 
 /// A more efficient means to compute the lagrange weights that minimizes allocations...
 #[allow(unused)]
+#[inline]
 pub fn lagrange_weights_cache(x: f64, coeffs: &[f64], points: &[f64], weights: &mut [f64]) -> usize 
 {        
     
@@ -109,7 +111,8 @@ pub fn jacobian_lagrange_weights<const D: usize>( x: [f64; D], points: &[[f64; D
 #[test]
 fn test_lagrange_weights()
 {
-    let points = crate::one_dimensional_nodes::clenshaw_curtis_nodes(8);
+    use crate::tables::clenshaw_curtis_table::cc_nodes;
+    let points = cc_nodes(8);
     let weights= lagrange_weights(0.2, &lagrange_coeffs(&points), &points);
     println!("sum={}",weights.iter().zip(&points).map(|(&w,x)|w*x*x).sum::<f64>());
     assert!((1.0-weights.iter().zip(points).map(|(&w,x)|w*x*x).sum::<f64>()/(0.2*0.2)).abs() < 1e-14);    
@@ -118,7 +121,8 @@ fn test_lagrange_weights()
 #[test]
 fn test_lagrange_derivative()
 {
-    let points = crate::one_dimensional_nodes::clenshaw_curtis_nodes(2).iter().map(|x|[*x;1]).collect::<Vec<_>>();
+    use crate::tables::clenshaw_curtis_table::cc_nodes;
+    let points = cc_nodes(2).iter().map(|x|[*x;1]).collect::<Vec<_>>();
     let derivatives= jacobian_lagrange_weights([0.2], &points);
     assert!((1.0-derivatives.iter().zip(points).map(|(&w,x)|w[0]*x[0]*x[0]).sum::<f64>()/(0.4)).abs() < 1e-14);    
 }

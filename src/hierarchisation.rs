@@ -10,22 +10,22 @@ pub trait HierarchisationOperation<const D: usize, const DIM_OUT: usize> : Copy
 pub struct LinearHierarchisation<const D: usize, const DIM_OUT: usize>;
 impl<const D: usize, const DIM_OUT: usize> LinearHierarchisation<D, DIM_OUT>
 {
-    fn recurse(values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, dimension: usize, left_value: [f64; DIM_OUT], right_value: [f64; DIM_OUT], storage: &SparseGridStorage<D>)
+    fn recurse(values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, dimension: usize, left_value: [f64; DIM_OUT], right_value: [f64; DIM_OUT])
     {
         if let Some(seq) = iterator.seq()
         {
             let mid_value = values[seq];
-            if !iterator.hint()
+            if !iterator.is_leaf()
             {            
                 iterator.left_child(dimension);
                 if let Some(_seq) = iterator.seq()
                 {                    
-                    Self::recurse(values, iterator, dimension, left_value, mid_value, storage);                    
+                    Self::recurse(values, iterator, dimension, left_value, mid_value);                    
                 }
                 iterator.step_right(dimension);
                 if let Some(_seq) = iterator.seq()                
                 {
-                    Self::recurse(values, iterator, dimension, mid_value, right_value, storage);
+                    Self::recurse(values, iterator, dimension, mid_value, right_value);
                 }
                 iterator.up(dimension);
             }
@@ -39,8 +39,8 @@ impl<const D: usize, const DIM_OUT: usize> LinearHierarchisation<D, DIM_OUT>
 
 impl< const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearHierarchisation<D, DIM_OUT>
 {
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, storage: &SparseGridStorage<D>, dimension: usize) {
-        Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT], storage);
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, _storage: &SparseGridStorage<D>, dimension: usize) {
+        Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT]);
     }
 }
 
@@ -50,7 +50,7 @@ pub struct LinearBoundaryHierarchisation<const D: usize, const DIM_OUT: usize>(L
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearBoundaryHierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::iterators::grid_iterator::GridIterator<D>, storage: &SparseGridStorage<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::iterators::grid_iterator::GridIterator<D>, _storage: &SparseGridStorage<D>, dimension: usize) {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
         let seq_left = iterator.seq().unwrap();
@@ -58,12 +58,12 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
         iterator.reset_to_right_level_zero(dimension);
         let seq_right = iterator.seq().unwrap();       
         let right_boundary = values[seq_right];
-        if !iterator.hint()
+        if !iterator.is_leaf()
         {
             iterator.reset_to_level_one(dimension);
             if iterator.seq().is_some()
             {
-                LinearHierarchisation::recurse(values, iterator, dimension, left_boundary, right_boundary, storage);
+                LinearHierarchisation::recurse(values, iterator, dimension, left_boundary, right_boundary);
             }
             iterator.reset_to_left_level_zero(dimension);
         }
@@ -75,7 +75,7 @@ pub struct LinearDehierarchisation<const D: usize, const DIM_OUT: usize>;
 impl<const D: usize, const DIM_OUT: usize> LinearDehierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn recurse(values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, dimension: usize, left_value: [f64; DIM_OUT], right_value: [f64; DIM_OUT], storage: &SparseGridStorage<D>)
+    fn recurse(values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, dimension: usize, left_value: [f64; DIM_OUT], right_value: [f64; DIM_OUT])
     {
         if let Some(seq) = iterator.seq()
         {
@@ -85,17 +85,17 @@ impl<const D: usize, const DIM_OUT: usize> LinearDehierarchisation<D, DIM_OUT>
                 mid_value[i] += (left_value[i] + right_value[i]) * 0.5;
             }
             values[seq] = mid_value;
-            if !iterator.hint()
+            if !iterator.is_leaf()
             {
                 iterator.left_child(dimension);
                 if iterator.seq().is_some()
                 {
-                    Self::recurse(values, iterator, dimension, left_value, mid_value, storage);
+                    Self::recurse(values, iterator, dimension, left_value, mid_value);
                 }
                 iterator.step_right(dimension);
                 if iterator.seq().is_some()
                 {
-                    Self::recurse(values, iterator, dimension, mid_value, right_value, storage);
+                    Self::recurse(values, iterator, dimension, mid_value, right_value);
                 }
                 iterator.up(dimension);
             }
@@ -105,8 +105,8 @@ impl<const D: usize, const DIM_OUT: usize> LinearDehierarchisation<D, DIM_OUT>
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearDehierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, storage: &SparseGridStorage<D>, dimension: usize) {
-        Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT], storage);
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut GridIterator<D>, _storage: &SparseGridStorage<D>, dimension: usize) {
+        Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT]);
     }
 }
 
@@ -115,7 +115,7 @@ pub struct LinearBoundaryDehierarchisation<const D: usize, const DIM_OUT: usize>
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearBoundaryDehierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::iterators::grid_iterator::GridIterator<D>, storage: &SparseGridStorage<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::iterators::grid_iterator::GridIterator<D>, _storage: &SparseGridStorage<D>, dimension: usize) {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
         let seq_left = iterator.seq().unwrap();
@@ -123,12 +123,12 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
         iterator.reset_to_right_level_zero(dimension);
         let seq_right = iterator.seq().unwrap();
         let right_boundary = values[seq_right];
-        if !iterator.hint()
+        if !iterator.is_leaf()
         {
             iterator.reset_to_level_one(dimension);
             if iterator.seq().is_some()
             {
-               LinearDehierarchisation::recurse(values, iterator, dimension, left_boundary, right_boundary, storage);
+               LinearDehierarchisation::recurse(values, iterator, dimension, left_boundary, right_boundary);
             }
             iterator.reset_to_left_level_zero(dimension);
         }

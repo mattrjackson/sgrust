@@ -1,10 +1,11 @@
 use static_init::dynamic;
 
-use crate::{algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature}, one_dimensional_nodes::{self, OneDimensionalRule}};
+use crate::algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature};
 
 use super::base::Basis;
 
 static CC_MAX_LEVEL: u32 = 12;
+use crate::tables::clenshaw_curtis_table::*;
 
 #[derive(Clone)]
 pub struct ClenshawCurtisCache{ nodes: Vec<Vec<f64>>, weights: Vec<Vec<f64>>}
@@ -12,14 +13,13 @@ pub struct ClenshawCurtisCache{ nodes: Vec<Vec<f64>>, weights: Vec<Vec<f64>>}
 impl ClenshawCurtisCache
 {
     pub fn new(max_level: u32) -> Self
-    {
-        let cc = crate::one_dimensional_nodes::ClenshawCurtis;
+    {        
         let mut nodes = Vec::new();
         let mut weights = Vec::new();
         for level in 0..=max_level
         {
-            nodes.push(cc.nodes(level));
-            weights.push(cc.weights(level));
+            nodes.push(cc_nodes(level));
+            weights.push(cc_weights(level));
         }        
         Self{ nodes, weights}
     }
@@ -31,8 +31,7 @@ impl ClenshawCurtisCache
         }
         else
         {
-            let cc = crate::one_dimensional_nodes::ClenshawCurtis;
-            cc.node(level, index)
+            cc_nodes(level)[index as usize]
         }
     }
 
@@ -53,8 +52,7 @@ impl ClenshawCurtisCache
         }
         else
         {
-            let cc = crate::one_dimensional_nodes::ClenshawCurtis;
-            cc.weight(level, index)
+            cc_weights(level)[index as usize]
         }
     }
     pub fn weights_for_level(&self, level: u32) -> Vec<f64>
@@ -65,13 +63,7 @@ impl ClenshawCurtisCache
         }
         else
         {
-            let cc = crate::one_dimensional_nodes::ClenshawCurtis;
-            let mut r = Vec::with_capacity(cc.num_nodes(level));
-            for i in 0..r.len()
-            {
-                r.push(cc.weight(level, i as u32));
-            }
-            r
+            cc_weights(level)
         }
     }
 
@@ -83,8 +75,7 @@ impl ClenshawCurtisCache
         }
         else
         {
-            let cc = crate::one_dimensional_nodes::ClenshawCurtis;
-            cc.nodes(level)            
+            cc_nodes(level)            
         }
     }
 }
@@ -133,7 +124,7 @@ impl Basis for ClenshawCurtis
 
     fn num_nodes(&self, level: u32) -> usize
     {
-        one_dimensional_nodes::ClenshawCurtis.num_nodes(level)    
+        cc_num_nodes(level) as usize 
     }
     
     fn node(&self, level: u32, index: u32) -> f64 {
@@ -197,7 +188,7 @@ impl<const D: usize, const DIM_OUT: usize>  Quadrature<D, DIM_OUT> for ClenshawC
 impl<const D: usize, const DIM_OUT: usize> BasisAndQuadrature<D, DIM_OUT> for ClenshawCurtis{}
 
 #[test]
-fn print_cc_nodes_and_weights()
+fn check_cc_nodes_and_weights()
 {
     let cc = ClenshawCurtis;
     

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use sgrust::{errors::SGError, grids::{linear_grid::LinearGrid, sparse_grid::SparseGrid}, refinement::surplus::SurplusRefinement};
+use sgrust::{errors::SGError, grids::{linear_grid::LinearGrid, sparse_grid::SparseGrid}};
 
 fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
 {
@@ -11,10 +11,9 @@ fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
     let f = |x: &[f64; 6]|
     {
         let mut r = [0.0];
-        for i in 0..6
-        {
+        (0..6).for_each(|i| {
             r[0] += x[i]*x[i]*x[i];
-        }
+        });
         r
     };
 

@@ -80,10 +80,9 @@ fn six_d()-> Result<(), SGError>
     let mut f = |x: &[f64; 6]|
     {
         let mut r = [0.0];
-        for i in 0..6
-        {
+        (0..6).for_each(|i| {
             r[0] += x[i]*x[i]*x[i];
-        }
+        });
         r
     };
 

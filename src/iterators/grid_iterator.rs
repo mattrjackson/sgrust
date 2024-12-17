@@ -127,7 +127,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
         self.index.is_inner_point()
     }
 
-    pub(crate) fn hint(&self) -> bool
+    pub(crate) fn is_leaf(&self) -> bool
     {
         if let Some(seq) = self.seq
         {
@@ -140,7 +140,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
     }
 
     #[allow(unused)]
-    pub(crate) fn hint_left(&self, dim: usize) -> bool
+    pub(crate) fn is_left_leaf(&self, dim: usize) -> bool
     {
         let i = self.index.index[dim];
         let l = self.index.level[dim];
@@ -151,7 +151,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
     }
 
     #[allow(unused)]
-    pub(crate) fn hint_right(&self, dim: usize) -> bool
+    pub(crate) fn is_right_leaf(&self, dim: usize) -> bool
     {
         let i = self.index.index[dim];
         let l = self.index.level[dim];
@@ -176,7 +176,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
         loop
         {
             
-            if self.hint_left(dim) || self.hint_right(dim)
+            if self.is_left_leaf(dim) || self.is_right_leaf(dim)
             {
                 depth += 1;
             }
@@ -189,14 +189,14 @@ impl<'a, const D: usize> GridIterator<'a, D>
                     self.index.index[dim] = i;
                     if self.seq.is_some()
                     {
-                        if self.hint_left(dim)
+                        if self.is_left_leaf(dim)
                         {
                             depth += 1;
                             self.left_child(dim);
                             index_found = true;
                             break;
                         }
-                        else if self.hint_right(dim)
+                        else if self.is_right_leaf(dim)
                         {
                             depth += 1;
                             self.right_child(dim);

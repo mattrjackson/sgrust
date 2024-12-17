@@ -15,51 +15,46 @@ impl <'a, const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'a
         let idx = source[current_dim];
         let mut level = 1;
         let mut result = [0.0; DIM_OUT];
-        loop 
+        
+        while let Some(seq) = iterator.seq()
         {
-            if let Some(seq) = iterator.seq()
+            let index = iterator.index().index[current_dim];
+            let val = self.basis(current_dim).eval(level, index, point[current_dim]) * value;
+            if current_dim == D - 1
             {
-                let index = iterator.index().index[current_dim];
-                let val = self.basis(current_dim).eval(level, index, point[current_dim]) * value;
-                if current_dim == D - 1
+                (0..DIM_OUT).for_each(|d| {
+                    result[d] += alpha[seq][d] * val;
+                });
+            }
+            else 
+            {
+                let r_temp = self.recursive_eval(point, current_dim + 1, val, iterator, source, alpha);
+                for i in 0..DIM_OUT
                 {
-                    (0..DIM_OUT).for_each(|d| {
-                        result[d] += alpha[seq][d] * val;
-                    });
-                }
-                else 
-                {
-                    let r_temp = self.recursive_eval(point, current_dim + 1, val, iterator, source, alpha);
-                    for i in 0..DIM_OUT
-                    {
-                        result[i] += r_temp[i];
-                    }
-                }
-                if iterator.hint()
-                {
-                    break;
-                }
-                // this decides in which direction we should descend by evaluating
-                // the corresponding bit
-                // the bits are coded from left to right starting with level 1
-                // being in position max_level
-                let go_right = (idx & (1 << (MAX_LEVEL - level))) > 0;
-                level += 1;
-
-                if go_right 
-                {
-                    iterator.right_child(current_dim);
-                } 
-                else 
-                {
-                    iterator.left_child(current_dim);
+                    result[i] += r_temp[i];
                 }
             }
-            else
+            if iterator.is_leaf()
             {
                 break;
             }
+            // this decides in which direction we should descend by evaluating
+            // the corresponding bit
+            // the bits are coded from left to right starting with level 1
+            // being in position max_level
+            let go_right = (idx & (1 << (MAX_LEVEL - level))) > 0;
+            level += 1;
+
+            if go_right 
+            {
+                iterator.right_child(current_dim);
+            } 
+            else 
+            {
+                iterator.left_child(current_dim);
+            }
         }
+        
         iterator.reset_to_level_one(current_dim);
         result
     }

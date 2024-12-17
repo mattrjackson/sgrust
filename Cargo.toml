@@ -1,11 +1,12 @@
 [package]
 name = "sgrust"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 keywords = ["sparsegrid", "interpolation"]
 description = "A sparse grid library written in Rust."
 repository = "https://github.com/mattrjackson/sgrust"
+
 [dependencies]
 bincode = "1.3.3"
 kdtree = { version = "0.7.0" }
@@ -32,4 +33,8 @@ debug = true
 
 [[bench]]
 name = "linear_grid"
+harness = false
+
+[[bench]]
+name = "combination_grid"
 harness = false

@@ -245,13 +245,13 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
     }
     #[inline]
     #[allow(unused)]
-    pub(crate) fn hint_left(&self, dim: usize) -> bool
+    pub(crate) fn is_left_leaf(&self, dim: usize) -> bool
     {
         self.data.array[self.offset(dim) + self.index].left_child.is_some()
     }
     #[inline]
     #[allow(unused)]
-    pub(crate) fn hint_right(&self, dim: usize) -> bool
+    pub(crate) fn is_right_leaf(&self, dim: usize) -> bool
     {
         self.data.array[self.offset(dim) + self.index].right_child.is_some()
     } 
@@ -263,7 +263,7 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         let orig_index = self.index;
         loop
         {            
-            if self.hint_left(dim) || self.hint_right(dim)
+            if self.is_left_leaf(dim) || self.is_right_leaf(dim)
             {
                 depth += 1;
             }

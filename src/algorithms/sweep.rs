@@ -13,7 +13,7 @@ fn sweep_recursive_in_place<const D: usize, T, R, F: SweepFunction<D, T, R>>(fun
         for d in 0..dim_rem
         {
             let cur_dim = dim_list[d];
-            if iterator.hint()
+            if iterator.is_leaf()
             {
                 continue;
             }
@@ -47,7 +47,7 @@ pub(crate) fn sweep_boundary_recursive_in_place<const D: usize, T, R, F: SweepFu
             if current_level > 0
             {
                 sweep_boundary_recursive_in_place(function, storage, values, iterator, dim_list, dim_rem - 1, dim_sweep);
-                if !iterator.hint()
+                if !iterator.is_leaf()
                 {
                     iterator.left_child(d);
                     if iterator.seq().is_some()
@@ -67,7 +67,7 @@ pub(crate) fn sweep_boundary_recursive_in_place<const D: usize, T, R, F: SweepFu
                 sweep_boundary_recursive_in_place(function, storage, values, iterator, dim_list, dim_rem - 1, dim_sweep);
                 iterator.reset_to_right_level_zero(d);
                 sweep_boundary_recursive_in_place(function, storage, values, iterator, dim_list, dim_rem - 1, dim_sweep);
-                if !iterator.hint()
+                if !iterator.is_leaf()
                 {
                     iterator.reset_to_level_one(d);
                     if iterator.seq().is_some()

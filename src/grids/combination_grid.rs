@@ -137,6 +137,7 @@ pub struct FullGrid
     pub lweights: Vec<NodesAndCoefficientsForLevel>,
     pub weight: f64,
     index_map: Vec<u32>,
+    combinations: Vec<u32>,
 }
 
 impl FullGrid
@@ -164,7 +165,12 @@ impl FullGrid
     /// 
     pub fn new(basis: &[GlobalBasis], level: &[u32], weight: f64) -> Self
     {
-        let mut r = Self{level: level.to_owned(), lweights: Vec::new(), weight, index_map: Vec::new() };
+        // Determine the number of points in each dimension from the basis functions
+        let npts: Vec<u32> = level.iter().zip(basis).map(|(&level, basis)| 
+          basis.num_nodes(level) as u32).collect();
+        // we store combinations in order to speed up interpolation later...
+        let combinations = Self::generate_combinations(&npts);
+        let mut r = Self{level: level.to_owned(), lweights: Vec::new(), weight, index_map: Vec::new(), combinations };
         
         // Compute lagrange coefficients for tensor
         let mut coeffs = Vec::new();
@@ -176,65 +182,80 @@ impl FullGrid
         r.lweights = coeffs;
         r
     }
-
-    ///
-    /// Computes the lagrange weights for a given `x` coordinate.
-    /// Returns weights as a vector of size (ndim, npts)
-    /// 
-    fn lagrange_weights(&self, x: &[f64]) -> Vec<Vec<f64>>
-    {
-        let mut weights: Vec<Vec<f64>> = vec![Vec::new(); self.ndim()];
-        for dim in 0..self.ndim()
-        {                        
-            weights[dim] = lagrange_weights(x[dim], &self.lweights[dim].coefficients,
-                &self.lweights[dim].nodes);            
-        }
-        weights
-    }
-    ///
-    /// Interpolate at `x` along a given grid using the specified `basis` functions. 
-    /// 
     #[inline]
-    pub fn interpolate(&self, basis: &Vec<GlobalBasis>, x: &[f64], y: &mut [f64], values: &[f64])
+    fn langrange_weight_size(&self) -> usize
     {
-        // Retrieve the lagrange weights for this coordinate
-        let weights = self.lagrange_weights(x);
-        let ndim = self.level.len();       
-        // Determine the number of points in each dimension from the basis functions
-        let npts: Vec<u32> = self.level.iter().zip(basis).map(|(&level, basis)| 
-            basis.num_nodes(level) as u32).collect();
-        // Calculate the total number of combinations by multiplying all bounds
+        let mut r = 1;
+        for item in &self.lweights
+        {
+            r *= item.nodes.len();
+        }
+        r
+    }
+    fn generate_combinations(npts: &[u32], ) -> Vec<u32>
+    {
+        let mut combinations = Vec::new();
         let total_combinations = npts.iter().product::<u32>() as usize;
-
-        let mut current = vec![0; ndim];
+        let ndim = npts.len();
+        let mut current = vec![0; ndim];        
         // Iterate through all possible combinations
-        for i in 0..total_combinations
+        (0..total_combinations).for_each(|i|
         {
             let mut index = i as u32;
             for (j, &bound) in npts.iter().rev().enumerate() {
                 current[ndim - 1 - j] = index % (bound);
                 index /= bound ;
             }
+            combinations.extend(&current);
+
+            current.fill(0);
+        });
+        combinations
+    }
+
+    ///
+    /// Computes the lagrange weights for a given `x` coordinate.
+    /// Returns vector starting indices for each dimension and a vector 
+    /// containing weights across all dimensions. 
+    /// 
+    fn lagrange_weights(&self, x: &[f64]) -> (Vec<usize>, Vec<f64>)
+    {
+        let mut weights: Vec<f64> = Vec::with_capacity(self.langrange_weight_size());
+        let mut indices: Vec<usize> = vec![0; self.ndim()];
+        for dim in 0..self.ndim()
+        {                        
+            indices[dim] = weights.len();
+            weights.extend(lagrange_weights(x[dim], &self.lweights[dim].coefficients,
+                &self.lweights[dim].nodes));
+        }
+        (indices, weights)
+    }
+    ///
+    /// Interpolate at `x` along a given grid using the specified `basis` functions. 
+    /// 
+    #[inline]
+    pub fn interpolate(&self, x: &[f64], y: &mut [f64], values: &[f64])
+    {
+        // Retrieve the lagrange weights for this coordinate
+        let (indices, weights) = self.lagrange_weights(x);
+        // Iterate through all possible combinations
+        for (i, combination) in self.combinations.chunks_exact(self.ndim()).enumerate()
+        {
             let mut combined_weight = 1.0;            
-            for dim in 0..self.ndim()
+            (0..self.ndim()).for_each(|dim|
             {
-                combined_weight *= weights[dim][current[dim] as usize];
-            }
+                let index = indices[dim];
+                combined_weight *= weights[index + combination[dim] as usize];
+            });
             // Retrive the value(s) for this node by using the `index_map` to determine 
             // the global index from the local grid index
-            let values = values.chunks_exact(y.len()).nth(self.index_map[i] as usize).unwrap();
+            let values = &values[y.len()*(self.index_map[i] as usize)..];
             // Add contribution in each dimension.
-            for i in 0..y.len()
+            (0..y.len()).for_each(|i|
             {
                 y[i] += combined_weight* values[i] * self.weight;
-            }
-            // Reset coordinates back to zero. Loop is faster than `current.fill(0)`
-            #[allow(clippy::needless_range_loop)]
-            for d in 0..self.ndim()
-            {
-                current[d] = 0;
-            }
-        }
+            });
+        }       
     }
 }
 
@@ -507,10 +528,9 @@ impl CombinationSparseGrid
         }
         else 
         {
-            for grid in &self.grids
+            for grid in self.grids.iter()
             {
-                grid.interpolate(&self.basis, &x, &mut y, values);
-                
+                grid.interpolate(&x, &mut y, values);                
             }
         }
         y
@@ -661,7 +681,7 @@ fn test_2d()
     let ndim = 2;
     let mut grid = CombinationSparseGrid::new(ndim, vec![
         GlobalBasis{basis_type: GlobalBasisType::ClenshawCurtis, custom_rule: None}; ndim]);
-    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::InterpolationExactness, level_limits: vec![8; ndim], ..Default::default()}; 
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::Level, level_limits: vec![8; ndim], ..Default::default()}; 
     grid.sparse_grid( options).unwrap();
     let mut values = Vec::with_capacity(grid.nodes.len() / ndim );
     for x in grid.nodes.chunks_exact(ndim)
@@ -669,10 +689,12 @@ fn test_2d()
         values.push(x[0] * x[0] + x[1]*x[1]);
     } 
     println!("integral={}", grid.integral(&values, 1)[0]);
+    let t1 = std::time::Instant::now();
     for _ in 0..1e5 as usize
     {
         let _ = grid.interpolate(&[0.2, 0.2], &values, 1)[0];
     }
+    println!("1e5 interpolation took {} msec", std::time::Instant::now().duration_since(t1).as_millis());
     println!("{}",grid.interpolate(&[0.2, 0.2], &values, 1)[0] );
     assert!((1.0-grid.interpolate(&[0.2, 0.2], &values, 1)[0] / (0.08)).abs() < 1e-12);
 }

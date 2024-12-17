@@ -10,7 +10,8 @@ use crate::errors::SGError;
 use crate::hierarchisation::HierarchisationOperation;
 use crate::iterators::grid_iterator_cache::{GridIteratorData, GridIteratorWithCache};
 use crate::storage::linear_grid::{BoundingBox, GridPoint, SparseGridData};
-use crate::{base_generator::Generator, storage::linear_grid::SparseGridStorage};
+use crate::storage::linear_grid::SparseGridStorage;
+use crate::generators::base::*;
 use crate::algorithms;
 use serde::{Serialize,Deserialize};
 

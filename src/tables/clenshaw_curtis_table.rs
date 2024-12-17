@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use rustfft::{FftPlanner, num_complex::Complex};
 ///
 /// Compute Clenshaw-Curtis weights using approach by J. Waldvogel (2013)
@@ -55,6 +57,29 @@ pub(crate) fn cc_weights(level: u32) -> Vec<f64> {
     weights.iter().map(|x|x.re).collect()
 }
 
+/// Return Clenshaw-Curtis nodes over a (0,1) interval
+pub(crate) fn cc_nodes(level: u32) -> Vec<f64>
+{
+    let n =  if level == 0 {1} else { 2_u32.pow(level) + 1 } ;
+    let mut nodes = vec![0.0; n as usize];    
+    if level > 0
+    {
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..n as usize
+        {
+            nodes[i] = 0.5*(1.0 + f64::cos(PI*(n as usize - 1 - i) as f64 / (n - 1) as f64));
+        }
+    }
+    else 
+    {
+        nodes[0] = 0.5;
+    }
+    nodes
+}
+pub(crate) fn cc_num_nodes(level: u32) -> u32
+{
+    if level == 0 {1} else { 2_u32.pow(level) + 1 }
+}
 
 #[test]
 fn check_weights() 
@@ -75,7 +100,7 @@ fn check_weights()
     // Weights computed from CLENSHAW_CURTIS_RULE by J. Burkardt. These are computed over a (-1,+1) interval, so we multiply
     // these values by 0.5 to correct weighting for our (0,1) interval.
     let weights5 = [0.06666666666666668, 0.5333333333333333, 0.7999999999999999, 0.5333333333333334, 0.06666666666666668];
-    let nodes  = crate::one_dimensional_nodes::clenshaw_curtis_nodes(level);
+    let nodes  = cc_nodes(level);
     for i in 0..5
     {
         println!("{},{}",  nodes[i], cc_weights[i]);

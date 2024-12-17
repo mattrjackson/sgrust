@@ -3,8 +3,8 @@ use crate::algorithms::refinement::RefinementFunctor;
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
-use crate::{base_generator::Generator, storage::linear_grid::SparseGridStorage};
-use crate::base_generator::*;
+use crate::storage::linear_grid::SparseGridStorage;
+use crate::generators::base::*;
 use serde::{Serialize, Deserialize};
 
 use super::sparse_grid::{SparseGrid, SparseGridBase};
