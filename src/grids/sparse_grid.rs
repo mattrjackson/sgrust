@@ -151,8 +151,15 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
         self.base_mut().coarsen(functor, true)
     }
 
-    /// Refine grid based on function `F`
+    /// 
+    /// Refine grid based on function `F`. Values are filled serially by calling `eval_fun`. 
+    /// 
     fn refine<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT], max_iterations: usize);
+
+    /// 
+    /// Refine grid based on function `F`, but use `eval_fun` to fill values in parallel.  
+    /// 
+    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize);
 
     /// Save compact form of data (no runtime iterator data is stored)
     fn save_compact(&self, path: &str) -> Result<(), SGError>
@@ -487,7 +494,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             {
                 break;
             }
-            self.values.reserve(indices.len());
+            self.values.reserve(indices.len());            
             for &i in &indices
             {
                 let mut point = self.storage.list()[i].unit_coordinate();
@@ -497,6 +504,42 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
                 }
                 self.values.push(eval_fun(&point));
             }            
+            self.hierarchize(op);
+            iteration += 1;            
+            if max_iterations <= iteration
+            {
+                break;
+            }
+        }
+        self.sort();        
+    }
+
+    pub fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>, EF: Fn(&[f64;D]) -> [f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, 
+        eval_fun: &EF, op: &OP, max_iterations: usize) 
+    {
+        let ref_op = BaseRefinement(self.storage.has_boundary());
+        let mut iteration = 0;     
+        loop
+        {
+            let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor);
+            if indices.is_empty()
+            {
+                break;
+            }
+            let mut temp_values = vec![[0.0; DIM_OUT]; indices.len()];
+            
+            indices.par_iter().zip(temp_values.par_iter_mut()).for_each(
+            |(&index, value)|
+            {
+                let mut point = self.storage.list()[index].unit_coordinate();
+                if let Some(bbox) = self.storage.bounding_box()
+                {
+                    point = bbox.to_real_coordinate(&point);
+                }
+                *value = eval_fun(&point);
+            }
+            );        
+            self.values.extend(&temp_values);
             self.hierarchize(op);
             iteration += 1;            
             if max_iterations <= iteration

@@ -82,6 +82,21 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
         self.update_runtime_data();
     }
 
+    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize)
+    {
+        if !self.has_boundary()
+        {
+            let op = LinearHierarchisationOperation;  
+            self.0.refine_parallel(functor, eval_fun, &op, max_iterations);
+        }
+        else
+        {
+            let op = LinearBoundaryHierarchisationOperation;
+            self.0.refine_parallel(functor, eval_fun, &op, max_iterations);
+        }        
+        self.update_runtime_data();
+    }
+
     fn sparse_grid(&mut self, levels: [usize; D]) {
         self.0.sparse_grid(levels, &LinearGridGenerator);
     }
@@ -249,6 +264,7 @@ fn check_make_grid_with_boundaries_6d()
     println!("1e6 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
 }
 
+
 #[test]
 fn check_grid_refinement()
 {
@@ -280,6 +296,29 @@ fn check_grid_refinement()
     println!("number of points={}", grid.len());   
 }
 
+
+#[test]
+fn check_parallel_grid_refinement()
+{
+    let level = 3;
+    let mut grid = LinearGrid::<5,1>::new();
+    grid.full_grid_with_boundaries(level);
+   // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
+    let points = grid.points();
+    let mut values = vec![[0.0; 1]; points.len()];
+    for (point, value) in points.iter().zip(values.iter_mut())
+    {
+        value[0] = point[0]*point[0] + point[1]*point[1];
+    }
+    grid.set_values(values.clone()).unwrap();
+
+    let num_points_original = grid.len();
+    println!("---- After Refinement ----");
+    let functor = crate::refinement::surplus::SurplusRefinement(1e-6);
+    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
+    println!("number of points={}", grid.len());   
+    assert!(num_points_original < grid.len());
+}
 
 #[test]
 fn fit_1d_gaussian_cdf()

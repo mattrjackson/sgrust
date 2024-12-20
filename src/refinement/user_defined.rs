@@ -7,10 +7,10 @@ use crate::algorithms::refinement::RefinementFunctor;
 /// - `storage`: Storage of sparse grid.
 /// - `alpha`: Surplus Coefficients
 /// 
-pub type UserRefinmentFunction<const D: usize, const DIM_OUT: usize> = dyn Fn(&crate::storage::linear_grid::SparseGridStorage<D>,  &[[f64; DIM_OUT]], &[[f64; DIM_OUT]], usize) -> f64;
+pub type UserRefinementFunction<const D: usize, const DIM_OUT: usize> = dyn Fn(&crate::storage::linear_grid::SparseGridStorage<D>,  &[[f64; DIM_OUT]], &[[f64; DIM_OUT]], usize) -> f64 + Send + Sync;
 pub struct UserDefinedRefinement<'a, const D: usize, const DIM_OUT: usize>
 {
-    pub fun_eval: &'a UserRefinmentFunction<D, DIM_OUT>,
+    pub fun_eval: &'a UserRefinementFunction<D, DIM_OUT>,
     pub threshold: f64,
 }
 

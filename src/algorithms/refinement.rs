@@ -5,7 +5,7 @@ use crate::storage::linear_grid::{GridPoint, SparseGridStorage};
 /// two operations are never done simulataneously, but provide a common
 /// interface to allow user-specified constraints to control either operation.
 /// 
-pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize>
+pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize> : Send + Sync
 {
     ///
     /// Return criteria for determining refinement threshold
@@ -115,8 +115,6 @@ fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(
         }
     }
 }
-
-
 
 ///
 /// Base refinement struct. Boolean determines whether or not boundaries are enabled...
@@ -265,19 +263,19 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
 impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for BaseRefinement<D, DIM_OUT>
 {
     fn refine(&self, storage: &mut SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize> {
-        let mut refinable_nodes: Vec<(usize, f64)> = Vec::new();
+        let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
-        iterate_refinable_points(storage,&mut |(seq, _point)|
-        {            
-            refinable_nodes.push((seq, functor.eval(storage, alpha, values, seq)));
-        });
-        refinable_nodes.sort_by(|a, b|a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)));
-        for (seq, value) in refinable_nodes
-        {
-            if value >= functor.threshold()
+        iterate_refinable_points(storage, &mut |(seq, _point)|
+        {        
+            if functor.eval(storage, alpha, values, seq) > functor.threshold()
             {
-                self.refine_gridpoint(storage,seq);
+                refinable_nodes.push(seq);  
             }
+           
+        });
+        for seq in refinable_nodes
+        {
+            self.refine_gridpoint(storage,seq);
         }
         (original_number..storage.len()).collect()
     }
