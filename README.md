@@ -4,13 +4,17 @@ Traditionally full grids are used for interpolation or integration of multidimen
 
 ## Usage:
 
-1. `LinearGrid`. This class utilizes linear basis functions, and supports interoplation, integration, as well as adaptive refinement and coarsening. 
+1. `LinearGrid`. This class utilizes linear basis functions, and supports interoplation, integration, as well as adaptive refinement and coarsening. See more details below...
 2. `CombinationGrid`.  This class currently is primarily useful for UQ applications (e.g. integration over global basis vectors), but supports Lagrange interpolation and integration based on Clenshaw Curtis or Gauss Patterson. The combination grid also allows tensor selection based on total polynomial exactness, as well as the level sum. The former can allow additional flexibility for the quadrature rules, and can result in more tensors being selected than the simple level sum approach leverages. 
+
+For `LinearGrid`, there are effectively two ways to handle updating values and refining the grid based upon them:
+1. Use Closures to set the base grid values, and update values during refinement. This is the most elegant way to approach the problem, but requires that the model creating the values to be linked to the Rust library (which may not be possible in all scenarios). 
+2. Use Vectors to retrieve points (e.g. `points()`, `refine_iteration`), and then set values using `set_values` and ` update_refined_values`. This allows manually loading values from potentially long-running simulations that will not be directly linked to the sparse grid library.
 
 ## Future goals for this project:
 
 1. Enable refinement/coarsening on the `CombinationGrid`. 
-2. Reduce memory usage for grid iterators used in the `LinearGrid`.
+2. Reduce memory usage for grid iterators used in the `LinearGrid` (Partially complete as of 0.2.2).
 3. Revise data structures for `LinearGrid` to improve data locality.
 
 ## Performance:

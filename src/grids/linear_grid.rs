@@ -97,6 +97,24 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
         self.update_runtime_data();
     }
 
+    fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool)
+    {
+        let starting_index = self.values().len() - values.len();
+        for (value, new_value) in self.base_mut().values[starting_index..].iter_mut().zip(values)
+        {
+            *value = new_value;
+        }
+        self.hierarchize();
+        if sort_data
+        {            
+            self.sort();
+        }    
+    }
+    fn sort(&mut self) {
+        self.base_mut().sort();
+        self.update_runtime_data();
+    }
+
     fn sparse_grid(&mut self, levels: [usize; D]) {
         self.0.sparse_grid(levels, &LinearGridGenerator);
     }
@@ -133,6 +151,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
     {
         Ok(Self(SparseGridBase::<D, DIM_OUT>::read_full_buffer(buffer)?))
     }
+    
+    
 }
 
 
@@ -272,6 +292,27 @@ fn check_grid_refinement()
     let mut grid = LinearGrid::<2,1>::new();
     grid.full_grid_with_boundaries(level);
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
+    grid.update_values(&mut|point| [point[0]*point[0] + point[1]*point[1]]);
+    println!("---- After Refinement ----");
+    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
+    grid.refine(&functor, &mut |x| [x[0]*x[0] + x[1]*x[1]], 20);
+    // for point in grid.storage.iter()
+    // {
+    //     let c = point.unit_coordinate();
+    //     println!("{},{}", c[0], c[1]);
+    // }    
+    println!("number of points={}", grid.len());   
+    println!("{},{}",grid.interpolate([0.2,0.3]).unwrap()[0], (0.2*0.2+0.3*0.3));
+    assert!((1.0 - grid.interpolate([0.2,0.3]).unwrap()[0]/(0.2*0.2+0.3*0.3)).abs() < 1e-6);
+}
+
+#[test]
+fn check_grid_refinement_iteration()
+{
+    let level = 2;
+    let mut grid = LinearGrid::<2,1>::new();
+    grid.full_grid_with_boundaries(level);
+   // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
     let mut values = vec![[0.0; 1]; points.len()];
     for (point, value) in points.iter().zip(values.iter_mut())
@@ -286,16 +327,17 @@ fn check_grid_refinement()
         println!("{},{}", c[0], c[1]);
     }
     println!("---- After Refinement ----");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-6);
-    grid.refine(&functor, &mut |x| [x[0]*x[0] + x[1]*x[1]], 20);
-    // for point in grid.storage.iter()
-    // {
-    //     let c = point.unit_coordinate();
-    //     println!("{},{}", c[0], c[1]);
-    // }    
+    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
+    for _ in 0..20
+    {
+        let values = grid.refine_iteration(&functor).iter_mut().map(|point| [point[0]*point[0] + point[1]*point[1]]).collect();
+        grid.update_refined_values(values, false);
+    }
+    grid.sort();
+    println!("{},{}", grid.interpolate([0.2, 0.3]).unwrap()[0], (0.2*0.2+0.3*0.3));
+    assert!((1.0 - grid.interpolate([0.2, 0.3]).unwrap()[0] / (0.2*0.2+0.3*0.3)).abs() < 1e-6);
     println!("number of points={}", grid.len());   
 }
-
 
 #[test]
 fn check_parallel_grid_refinement()

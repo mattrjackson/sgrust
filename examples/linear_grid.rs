@@ -11,10 +11,8 @@ fn one_d()-> Result<(), SGError>
 
     // create our function for evaluating values on the grid
     let mut f = |x: &[f64; 1]|[x[0].powi(2)];
-
     // Calculate the values on our grid
-    let values = grid.points().iter().map(&f).collect();
-    grid.set_values(values)?;
+    grid.update_values(&mut f);
     // Compare the values...
     let x = [0.3];
     let mut error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
@@ -43,9 +41,9 @@ fn two_d()-> Result<(), SGError>
 
     let mut f = |x: &[f64; 2]|[x[0].powi(2) + x[1].powi(2)];
 
-    let values = grid.points().iter().map(f).collect();
-    grid.set_values(values)?;
-
+    // Calculate the values on our grid
+    grid.update_values(&mut f);
+    
     // Compare the values...
     let x = [0.3, 0.1];
     let mut error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();

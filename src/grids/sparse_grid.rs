@@ -145,6 +145,32 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
         Ok(())
     }
 
+    /// Set values using a given evaluation function...
+    fn update_values(&mut self,  eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT])
+    {
+        let mut values = Vec::with_capacity(self.len());
+        for point in self.points()
+        {
+            values.push(eval_fun(&point));
+        }
+        self.set_values(values).expect("Failed to set values");
+        self.hierarchize();
+        self.update_runtime_data();
+    }
+
+    /// Set values by using evaluation function in parallel...
+    fn update_values_parallel<EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, eval_fun: &EF)
+    {
+        let mut values = vec![[0.0; DIM_OUT]; self.len()];
+        self.points().par_iter().zip(values.par_iter_mut()).for_each(
+        |(point, value)|
+        {
+            *value = eval_fun(point);
+        });        
+        self.hierarchize();
+        self.update_runtime_data();
+    }
+
     /// Coarsen grid based on functor `F`
     fn coarsen<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F) -> usize
     {
@@ -161,6 +187,22 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     /// 
     fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize);
 
+    /// 
+    /// Perform a single refinement iteration. Returns the slice of points that 
+    /// 
+    fn refine_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F) -> Vec<[f64; D]>
+    {
+        self.base_mut().refine_iteration(functor)
+    }
+
+    ///
+    /// Update refined values for last iteration (used in conjunction with `refine_single_iteration`).
+    /// For optimal performance, sort the data after your final iteration. Alternately, `sort` can be 
+    /// called directly.
+    /// 
+    fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool);
+
+
     /// Save compact form of data (no runtime iterator data is stored)
     fn save_compact(&self, path: &str) -> Result<(), SGError>
     {
@@ -171,6 +213,12 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     fn save_full(&mut self, path: &str) -> Result<(), SGError>
     {
         self.base_mut().save_full(path)
+    }
+
+    /// Sort points... 
+    fn sort(&mut self)
+    {
+        self.base_mut().sort();
     }
     /// Read compact form of data.
     fn read_compact<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized;
@@ -292,7 +340,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         indices.sort_by_key(|&i| &data[i]);
         indices
     }
-    fn sort(&mut self)
+    pub(crate) fn sort(&mut self)
     {
         let mut indices = Self::argsort(self.storage.list());        
         for i in 0..indices.len()
@@ -482,6 +530,24 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         }        
         total_num_removed
         
+    }
+
+    pub fn refine_iteration(&mut self, functor: &impl RefinementFunctor<D, DIM_OUT>) -> Vec<[f64; D]>
+    {
+        let ref_op = BaseRefinement(self.storage.has_boundary());
+        let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor);
+        self.values.resize(self.len(), [0.0; DIM_OUT]);            
+        let mut points = Vec::with_capacity(indices.len());
+        for &i in &indices
+        {
+            let mut point = self.storage.list()[i].unit_coordinate();
+            if let Some(bbox) = self.storage.bounding_box()
+            {
+                point = bbox.to_real_coordinate(&point);
+            }
+            points.push(point);
+        }           
+        points
     }
     pub fn refine<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>>(&mut self, functor: &F, eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT], op: &OP, max_iterations: usize) 
     {

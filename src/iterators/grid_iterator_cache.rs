@@ -16,9 +16,6 @@ pub(crate) struct NodeProperties
     pub left_child: Option<u32>,
     pub right_child: Option<u32>,
     pub up: Option<u32>,
-    pub lzero: Option<u32>,
-    pub rzero: Option<u32>,
-    pub one: Option<u32>,
     pub is_inner: bool,
     pub is_leaf: bool,
 }
@@ -128,22 +125,158 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
             array[active_index].right_child = Some(rc_index as u32);            
         } 
         iterator.reset_to_left_level_zero(dim);
-        array[active_index].lzero = if let Some(&index) = map.get(iterator.index()) { Some (index as u32)} else { None};
+        // Handle left level zero
+        if let Some(&index) = map.get(iterator.index()) {             
+            // we know what the correct index is...
+            let lzero = index as u32;
+            // first let's find the leftmost node linked in our data structure.
+            let mut left_index = seq as u32;
+            while let Some(index) = array[offset + left_index as usize].left
+            {
+                left_index = index;
+            }
+            // If the leftmost node isn't the boundary, we need to  update our data structure
+            // such that if it has boundaries, we set its left boundary neighbor.
+            if left_index != lzero
+            {
+                array[offset + left_index as usize].left = Some(lzero);
+            }
+        } 
         iterator.reset_to_right_level_zero(dim);
-        array[active_index].rzero = if let Some(&index) = map.get(iterator.index()) { Some (index as u32)} else { None};
-        iterator.reset_to_level_one(dim);
-
         if let Some(&index) = map.get(iterator.index())
         {
-            array[active_index].one = Some(index as u32);
-        }   
-        
+            // first let's find the rightmost node linked in our data structure.
+            let rzero = index as u32;
+            let mut right_index = seq as u32;
+            while let Some(index) = array[offset + right_index as usize].right
+            {
+                right_index = index;
+            }
+            // If the rightmost node isn't the boundary, we need to update our data structure
+            // such that if it has boundaries, we set its right boundary neighbor.
+            if right_index != rzero
+            {
+                array[offset + right_index as usize].right = Some(rzero);
+            }
+        }       
     }
+
     
 }
 
 impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
 {
+
+    /// This computes the left level one (e.g. index=1 and level=1 for the given dimension).
+    #[inline]
+    pub fn compute_level_one(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32>
+    {
+        let mut index = self.index;
+        let level = storage[index].level[dim];
+        // First we determine which way we iterate up or down the level hierarchy...
+        if level == 0
+        {
+            while let Some(parent_index) = self.data.array[self.offset(dim) + index].left_child 
+            {            
+                index = parent_index as usize;
+                if storage[index].level[dim] == 1
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            while let Some(parent_index) = self.data.array[self.offset(dim) + index].up 
+            {            
+                index = parent_index as usize;
+                if storage[index].level[dim] == 1
+                {
+                    break;
+                }
+            }
+        }
+        // Now get the node for current level. 
+        let node= &storage.list()[index];
+        // If this isn't level one, we have no level one node defined, so return None.
+        if node.level[dim] != 1
+        {
+            return None;
+        }
+        // now we retrieve the active index and check its value. Again our goal here
+        // is to retrieve the node with index 1.
+        let active_index = storage.list()[index].index[dim] as usize;
+        match active_index.cmp(&1)
+        {
+            std::cmp::Ordering::Less => {
+                // Need to step to the right until we find index = 1.
+                let mut right_index = index;
+                while let Some(index) = self.data.array[self.offset(dim) +  right_index].right
+                {
+                    right_index = index as usize;
+                    if right_index == 1 
+                    {
+                        // We've found the node with index 1.
+                        return Some(right_index as u32)
+                    }
+                }
+            },
+            std::cmp::Ordering::Equal => 
+            {
+                return Some(index as u32);
+            },
+            std::cmp::Ordering::Greater => 
+            {
+                let mut left_index = index;
+                while let Some(index) = self.data.array[self.offset(dim) +  left_index].right
+                {
+                    left_index = index as usize;
+                    if left_index == 1
+                    {
+                        // We've found the node with index 1.
+                        return Some(left_index as u32)
+                    }
+                }
+            },
+        }           
+        // Otherwise, we didn't find the node with index 1, so return None. 
+        None
+    }
+
+    /// Compute the index of the left boundary node (e.g. the left zero-level node) for the given dimension.
+    #[inline]
+    pub fn compute_lzero(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32> {        
+        let mut index = self.index;
+        while let Some(left_node) = self.data.array[self.offset(dim) + index].left
+        {
+            index = left_node as usize
+        }
+        if storage[index].index[dim] != 0
+        {
+            None
+        }
+        else {
+            Some(index as u32)    
+        }
+        
+    }
+
+    /// Compute the index of the right boundary node (e.g. the right zero-level node) for the given dimension.
+    #[inline]
+    pub fn compute_rzero(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32> {
+        let mut index = self.index;
+        while let Some(right_node) = self.data.array[self.offset(dim) + index].right
+        {
+            index = right_node as usize
+        }        
+        if storage[index].index[dim] != 1
+        {
+            None
+        }
+        else {
+            Some(index as u32)    
+        }
+    }
     pub(crate) fn new(data: &'b GridIteratorData<D>) -> Self
     {
         Self { index: 0, data }
@@ -159,11 +292,11 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         self.index = self.data.zero_level_node;
     }
     #[inline]
-    pub(crate) fn reset_to_left_level_zero(&mut self, dim: usize) -> bool
+    pub(crate) fn reset_to_left_level_zero(&mut self, dim: usize, storage: &SparseGridStorage<D>) -> bool
     {
-        if let Some(index) = self.data.array[self.offset(dim) + self.index].lzero
+        if let Some(index) = self.compute_lzero(dim, storage)
         {
-            self.index = index as usize;            
+            self.index = index as usize;
             true
         }
         else
@@ -172,10 +305,10 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         }        
     }
     #[inline]
-    pub(crate) fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
+    pub(crate) fn reset_to_right_level_zero(&mut self, dim: usize, storage: &SparseGridStorage<D>) -> bool
     {
-        if let Some(index) = self.data.array[self.offset(dim) + self.index].rzero
-        {
+        if let Some(index) = self.compute_rzero(dim, storage)
+        {           
             self.index = index as usize;            
             true
         }
@@ -193,9 +326,9 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
     }
 
     #[inline]
-    pub(crate) fn reset_to_level_one(&mut self, dim: usize) -> bool
+    pub(crate) fn reset_to_level_one(&mut self, dim: usize, storage: &SparseGridStorage<D>) -> bool
     {
-        match self.data.array[self.offset(dim) + self.index].one
+        match self.compute_level_one(dim, storage)
         {
             Some(index) => 
             {

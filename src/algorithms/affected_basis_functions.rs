@@ -28,8 +28,8 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
         {
             // handle boundaries if we are on level 0
             // level 0, index 0
-            // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
-            if iterator.reset_to_left_level_zero(dim)
+            // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
+            if iterator.reset_to_left_level_zero(dim, storage)
             {
                 let seq_l = iterator.index;
                 let new_value_l = basis[dim].eval(0, 0, x[dim]);
@@ -43,7 +43,7 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
-            if iterator.reset_to_right_level_zero(dim)
+            if iterator.reset_to_right_level_zero(dim, storage)
             {
                 let seq_r = iterator.index;
                 let new_value_r = basis[dim].eval(0, 1, x[dim]);
@@ -90,14 +90,14 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
             {
                 break;
             }            
-            if !iterator.reset_to_level_one(dim)
+            if !iterator.reset_to_level_one(dim, storage)
             {
                 break;
             }            
         }
         level += 1;
     }
-    iterator.reset_to_left_level_zero(dim);
+    iterator.reset_to_left_level_zero(dim, storage);    
 }
 #[inline]
 pub(crate) fn get_affected_basis_functions<const D: usize, BASIS: Basis>(x: [f64; D], basis: &[BASIS; D], storage: &SparseGridStorage<D>,  iterator: &mut GridIteratorWithCache<D>) -> Vec<(usize, f64)>

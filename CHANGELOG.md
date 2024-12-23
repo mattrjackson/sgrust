@@ -10,6 +10,18 @@
 ### Fixed
 -->
 
+## [0.2.2] — 2024-12-23
+
+### Security
+### Added
+1. Created new methods, `update_refined_values` and `refine_iteration` to provide an alternate interface to iteratively call the refinement function and update the values.  
+2. Created new methods `update_values` and `update_values_parallel` to provide an easier way to update the base grid values. 
+### Changed
+Reduced memory overhead of `GridIteratorWithCache` by 2x. This also appears to improve performance by 10-20%. This is a breaking change for serializing/deserializing a `LinearGrid`.
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.2.1] — 2024-12-20
 
 ### Security

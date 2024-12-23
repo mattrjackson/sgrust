@@ -115,9 +115,8 @@ impl<'a, const D: usize> GridIterator<'a, D>
     }
     pub(crate) fn step_right(&mut self, dim: usize)
     {
-        let i = self.index.index[dim];        
+        let i = self.index.index[dim];
         self.index.index[dim] = i + 2;
-        
         self.seq = self.storage.sequence_number(&self.index);
     }
 
