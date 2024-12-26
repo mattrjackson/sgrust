@@ -10,6 +10,18 @@
 ### Fixed
 -->
 
+## [0.3.2] — 2024-12-25
+
+### Security
+### Added
+Added a new test `check_grid_refinement_parallel` to ensure `update_values_parallel` works as intended.
+### Changed
+Fixed a bug in `update_values_parallel` that resulted in the newly computed values not being added to the grid. 
+### Deprecated
+### Removed
+### Fixed
+
+
 ## [0.3.1] — 2024-12-25
 
 ### Security

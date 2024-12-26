@@ -167,6 +167,7 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
         {
             *value = eval_fun(point);
         });        
+        self.set_values(values).expect("Failed to set values");
         self.hierarchize();
         self.update_runtime_data();
     }

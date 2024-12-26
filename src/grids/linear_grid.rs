@@ -307,6 +307,22 @@ fn check_grid_refinement()
 }
 
 #[test]
+fn check_grid_refinement_parallel()
+{
+    let level = 2;
+    let mut grid = LinearGrid::<2,1>::new();
+    grid.full_grid_with_boundaries(level);
+   // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
+    grid.update_values_parallel(&|point| [point[0]*point[0] + point[1]*point[1]]);
+    println!("---- After Refinement ----");
+    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
+    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
+    println!("number of points={}", grid.len());   
+    println!("{},{}",grid.interpolate([0.2,0.3]).unwrap()[0], (0.2*0.2+0.3*0.3));
+    assert!((1.0 - grid.interpolate([0.2,0.3]).unwrap()[0]/(0.2*0.2+0.3*0.3)).abs() < 1e-6);
+}
+
+#[test]
 fn check_grid_refinement_iteration()
 {
     let level = 2;
