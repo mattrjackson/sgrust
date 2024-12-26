@@ -75,11 +75,11 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
             {
                 break;
             }
-            if x > x_coord && !iterator.right_child(dim)
+            if x > x_coord && !iterator.right_child(dim, storage)
             {                
                 break;
             }             
-            if x <= x_coord && !iterator.left_child(dim)
+            if x <= x_coord && !iterator.left_child(dim, storage)
             {                 
                 break;
             }
@@ -103,7 +103,7 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
 pub(crate) fn get_affected_basis_functions<const D: usize, BASIS: Basis>(x: [f64; D], basis: &[BASIS; D], storage: &SparseGridStorage<D>,  iterator: &mut GridIteratorWithCache<D>) -> Vec<(usize, f64)>
 {
     iterator.reset_to_level_zero();
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(2000);
     let xscaled = if let Some(bbox) = storage.bounding_box()
     {
         bbox.to_unit_coordinate(&x)

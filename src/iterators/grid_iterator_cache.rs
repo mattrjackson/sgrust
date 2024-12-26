@@ -11,22 +11,103 @@ use super::grid_iterator::GridIterator;
 #[derive(Copy, Clone, Default)]
 pub(crate) struct NodeProperties
 {
-    pub left: Option<u32>,
-    pub right: Option<u32>,
-    pub left_child: Option<u32>,
-    pub right_child: Option<u32>,
-    pub up: Option<u32>,
-    pub is_inner: bool,
-    pub is_leaf: bool,
+    /// Left neighbor
+    pub(crate) left: u32,
+    /// Right neighbor
+    pub(crate) right: u32,
+    /// Child (could be either left or right child)
+    pub(crate) down: u32,
+    /// Parent node
+    pub(crate) up: u32,
+    /// Flags used to compactly store state of presence of neighbors (e.g. left/right/up/down/left_child/right_child).
+    flags: u8,
 }
 
 impl NodeProperties
 {
-    pub fn is_complete(&self) -> bool
-    {
-        self.left.is_some() && self.right.is_some()
-        && self.left_child.is_some()&& self.right_child.is_some() 
-        && self.up.is_some()
+    const HAS_LEFT: usize = 0;
+    const HAS_RIGHT: usize = 1;
+    const HAS_LEFT_CHILD: usize = 2;
+    const HAS_RIGHT_CHILD: usize = 3;
+    const HAS_PARENT: usize = 4;
+    const HAS_CHILD: usize = 5;
+    #[inline]
+    fn set_flag<const INDEX: usize>(&mut self, value: bool) {
+        if value {
+            self.flags |= 1 << INDEX;
+        } else {
+            self.flags &= !(1 << INDEX);
+        }
+    }
+
+    #[inline]
+    fn get_flag<const INDEX: usize>(&self) -> bool {
+        (self.flags & (1 << INDEX)) != 0
+    }
+
+    #[inline]
+    pub fn has_left(&self) -> bool {
+        self.get_flag::<{ Self::HAS_LEFT }>()
+    }
+
+    #[inline]
+    pub fn set_has_left(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_LEFT }>(value);
+    }
+
+    #[inline]
+    pub fn has_right(&self) -> bool {
+        self.get_flag::<{ Self::HAS_RIGHT }>()
+    }
+
+    #[inline]
+    pub fn set_has_right(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_RIGHT }>(value);
+    }
+
+    #[inline]
+    pub fn has_left_child(&self) -> bool {
+        self.get_flag::<{ Self::HAS_LEFT_CHILD }>()
+    }
+
+    #[inline]
+    pub fn set_has_left_child(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_LEFT_CHILD }>(value);
+    }
+
+    #[inline]
+    pub fn has_right_child(&self) -> bool {
+        self.get_flag::<{ Self::HAS_RIGHT_CHILD }>()
+    }
+
+    #[inline]
+    pub fn set_has_right_child(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_RIGHT_CHILD }>(value);
+    }
+
+    #[inline]
+    pub fn has_parent(&self) -> bool {
+        self.get_flag::<{ Self::HAS_PARENT }>()
+    }
+
+    #[inline]
+    pub fn set_has_parent(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_PARENT }>(value);
+    }
+
+    #[inline]
+    pub fn has_child(&self) -> bool {
+        self.get_flag::<{ Self::HAS_CHILD }>()
+    }
+
+    #[inline]
+    pub fn set_has_child(&mut self, value: bool) {
+        self.set_flag::<{ Self::HAS_CHILD }>(value);
+    }
+
+    #[inline]
+    pub fn is_complete(&self) -> bool {
+        self.has_left() && self.has_right() && self.has_left_child() && self.has_right_child() && self.has_parent()
     }
 }
 #[derive(Serialize, Deserialize, Clone)]
@@ -83,9 +164,11 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
         {
             let left_index = map[iterator.index()];
             // assign left node            
-            array[active_index].left = Some(left_index as u32);
+            array[active_index].left = left_index as u32;
+            array[active_index].set_has_left(true);
             // assign right node for left of current node...
-            array[offset + left_index].right = Some(seq as u32);
+            array[offset + left_index].right = seq as u32;
+            array[offset + left_index].set_has_right(true);
         }
         iterator.set_index(node_index);
         iterator.step_right(dim);     
@@ -93,9 +176,11 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
         {
             // assign right node
             let right_index = map[iterator.index()];
-            array[active_index].right = Some(right_index as u32);
+            array[active_index].right = right_index as u32;
+            array[active_index].set_has_right(true);
             // assign left node for right of current node...
-            array[offset + right_index].left = Some(seq as u32);            
+            array[offset + right_index].left = seq as u32;   
+            array[offset + right_index].set_has_left(true);
         }        
         iterator.set_index(node_index);
         iterator.up(dim);       
@@ -103,7 +188,8 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
         {
             let parent_index = map[iterator.index()];
             // assign parent
-            array[active_index].up = Some(parent_index as u32);            
+            array[active_index].up = parent_index as u32;        
+            array[active_index].set_has_parent(true);
         }
         iterator.set_index(node_index);
         // get left child
@@ -112,7 +198,10 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
         {
             // assign left child
             let lc_index = map[iterator.index()];            
-            array[active_index].left_child = Some(lc_index as u32);                        
+                                 
+            array[active_index].set_has_left_child(true);
+            array[active_index].down = lc_index as u32;
+            array[active_index].set_has_child(true);
         }
         
         iterator.set_index(node_index);
@@ -122,7 +211,11 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
         {
             // assign right child
             let rc_index = map[iterator.index()];      
-            array[active_index].right_child = Some(rc_index as u32);            
+            array[active_index].set_has_right_child(true);
+            // this potentially overwrites the down index if left child exists,
+            // but that's ok. We just need one of them, or to know neither exist.
+            array[active_index].down = rc_index as u32;   
+            array[active_index].set_has_child(true);
         } 
         iterator.reset_to_left_level_zero(dim);
         // Handle left level zero
@@ -131,15 +224,16 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
             let lzero = index as u32;
             // first let's find the leftmost node linked in our data structure.
             let mut left_index = seq as u32;
-            while let Some(index) = array[offset + left_index as usize].left
+            while array[offset + left_index as usize].has_left()
             {
-                left_index = index;
+                left_index = array[offset + left_index as usize].left;
             }
             // If the leftmost node isn't the boundary, we need to  update our data structure
             // such that if it has boundaries, we set its left boundary neighbor.
             if left_index != lzero
             {
-                array[offset + left_index as usize].left = Some(lzero);
+                array[offset + left_index as usize].left = lzero;
+                array[offset + left_index as usize].set_has_left(true);
             }
         } 
         iterator.reset_to_right_level_zero(dim);
@@ -148,15 +242,16 @@ fn update_indices<const D: usize>(iterator: &mut GridIterator<D>, array:&mut [No
             // first let's find the rightmost node linked in our data structure.
             let rzero = index as u32;
             let mut right_index = seq as u32;
-            while let Some(index) = array[offset + right_index as usize].right
+            while array[offset + right_index as usize].has_right()
             {
-                right_index = index;
+                right_index =  array[offset + right_index as usize].right;
             }
             // If the rightmost node isn't the boundary, we need to update our data structure
             // such that if it has boundaries, we set its right boundary neighbor.
             if right_index != rzero
             {
-                array[offset + right_index as usize].right = Some(rzero);
+                array[offset + right_index as usize].right = rzero;
+                array[offset + right_index as usize].set_has_right(true);
             }
         }       
     }
@@ -176,20 +271,16 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         // First we determine which way we iterate up or down the level hierarchy...
         if level == 0
         {
-            while let Some(parent_index) = self.data.array[self.offset(dim) + index].left_child 
+            if self.data.array[self.offset(dim) + index].has_left_child() 
             {            
-                index = parent_index as usize;
-                if storage[index].level[dim] == 1
-                {
-                    break;
-                }
+                index = self.compute_left_child(dim, storage).unwrap() as usize;              
             }
         }
         else
         {
-            while let Some(parent_index) = self.data.array[self.offset(dim) + index].up 
+            while self.data.array[self.offset(dim) + index].has_parent()
             {            
-                index = parent_index as usize;
+                index = self.data.array[self.offset(dim) + index].up as usize;
                 if storage[index].level[dim] == 1
                 {
                     break;
@@ -211,9 +302,9 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
             std::cmp::Ordering::Less => {
                 // Need to step to the right until we find index = 1.
                 let mut right_index = index;
-                while let Some(index) = self.data.array[self.offset(dim) +  right_index].right
+                while self.data.array[self.offset(dim) +  right_index].has_right()
                 {
-                    right_index = index as usize;
+                    right_index = self.data.array[self.offset(dim) +  right_index].right as usize;
                     if right_index == 1 
                     {
                         // We've found the node with index 1.
@@ -228,9 +319,9 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
             std::cmp::Ordering::Greater => 
             {
                 let mut left_index = index;
-                while let Some(index) = self.data.array[self.offset(dim) +  left_index].right
+                while self.data.array[self.offset(dim) +  left_index].has_left()
                 {
-                    left_index = index as usize;
+                    left_index = self.data.array[self.offset(dim) +  left_index].left as usize;
                     if left_index == 1
                     {
                         // We've found the node with index 1.
@@ -247,9 +338,10 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
     #[inline]
     pub fn compute_lzero(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32> {        
         let mut index = self.index;
-        while let Some(left_node) = self.data.array[self.offset(dim) + index].left
+        let offset = self.offset(dim);
+        while self.data.array[offset + index].has_left()
         {
-            index = left_node as usize
+            index = self.data.array[offset + index].left as usize
         }
         if storage[index].index[dim] != 0
         {
@@ -257,17 +349,62 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         }
         else {
             Some(index as u32)    
+        }        
+    }
+    #[inline]
+    pub fn compute_left_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32>
+    {
+        let original_node = &self.data.array[self.offset(dim) + self.index];
+        let node_index = storage[self.index].index[dim];
+        if original_node.has_child()
+        {
+            let index = original_node.down;
+            let dim_index = storage[original_node.down as usize].index[dim];
+            if dim_index == (2*node_index - 1)
+            {
+                Some(index)
+            }
+            else
+            {               
+                Some(self.data.array[self.offset(dim) + index as usize].left)
+            }
         }
-        
+        else
+        {
+            None
+        }
+    }
+    #[inline]
+    fn compute_right_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32>
+    {
+        let original_node = &self.data.array[self.offset(dim) + self.index];
+        let node_index = storage[self.index].index[dim];
+        if original_node.has_child()
+        {
+            let index = original_node.down;
+            let dim_index = storage[original_node.down as usize].index[dim];
+            if dim_index == 2*node_index + 1
+            {
+                Some(index)
+            }
+            else
+            {              
+                Some(self.data.array[self.offset(dim) + index as usize].right)
+            }
+        }
+        else
+        {
+            None
+        }
     }
 
     /// Compute the index of the right boundary node (e.g. the right zero-level node) for the given dimension.
     #[inline]
     pub fn compute_rzero(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32> {
         let mut index = self.index;
-        while let Some(right_node) = self.data.array[self.offset(dim) + index].right
+        while self.data.array[self.offset(dim) + index].has_right()
         {
-            index = right_node as usize
+            index = self.data.array[self.offset(dim) + index].right as usize
         }        
         if storage[index].index[dim] != 1
         {
@@ -339,36 +476,39 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         }
     }
     #[inline]
-    pub(crate) fn left_child(&mut self, dim: usize) -> bool
+    pub(crate) fn left_child(&mut self, dim: usize, storage: &SparseGridStorage<D>) -> bool
     {
-        match self.data.array[self.offset(dim) + self.index].left_child
+        match self.data.array[self.offset(dim) + self.index].has_left_child()
         {
-            Some(index) => 
-            {
-                self.index = index as usize;
+            true => 
+            {                
+                self.index = self.compute_left_child(dim, storage).unwrap() as usize;
+                
                 true
             },
-            None => 
+            false => 
             {                
+                assert_eq!(self.compute_left_child(dim, storage), None);
                 false
             },
         }        
     }
     #[inline]
-    pub(crate) fn right_child(&mut self, dim: usize) -> bool
+    pub(crate) fn right_child(&mut self, dim: usize, storage: &SparseGridStorage<D>) -> bool
     {
-        match self.data.array[self.offset(dim) + self.index].right_child
+        match self.data.array[self.offset(dim) + self.index].has_right_child()
         {
-            Some(index) => 
-            {
-                self.index = index as usize;
+            true => 
+            {                
+                self.index = self.compute_right_child(dim, storage).unwrap() as usize;
                 true
             },
-            None => 
-            {
+            false => 
+            {        
+                assert_eq!(self.compute_right_child(dim, storage), None);        
                 false
-            }
-        }        
+            },
+        }         
     }
    
     #[inline]
@@ -378,15 +518,15 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
     }
     #[inline]
     #[allow(unused)]
-    pub(crate) fn is_left_leaf(&self, dim: usize) -> bool
+    pub(crate) fn has_left_leaf(&self, dim: usize) -> bool
     {
-        self.data.array[self.offset(dim) + self.index].left_child.is_some()
+        self.data.array[self.offset(dim) + self.index].has_left_child()
     }
     #[inline]
     #[allow(unused)]
-    pub(crate) fn is_right_leaf(&self, dim: usize) -> bool
+    pub(crate) fn has_right_leaf(&self, dim: usize) -> bool
     {
-        self.data.array[self.offset(dim) + self.index].right_child.is_some()
+        self.data.array[self.offset(dim) + self.index].has_right_child()
     } 
     #[inline]
     #[allow(unused)]
@@ -396,7 +536,7 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         let orig_index = self.index;
         loop
         {            
-            if self.is_left_leaf(dim) || self.is_right_leaf(dim)
+            if self.has_left_leaf(dim) || self.has_right_leaf(dim)
             {
                 depth += 1;
             }

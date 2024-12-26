@@ -10,6 +10,16 @@
 ### Fixed
 -->
 
+## [0.3.0] — 2024-12-25
+
+### Security
+### Added
+### Changed
+Reduced memory overhead of `GridIteratorWithCache` further. This is a breaking change for serializing/deserializing a `LinearGrid`. Overall this is within 2% of the performance of the original methodology rather required 68 bytes of overhead * number of points * number of dimensions vs 20 bytes of overhead * number of points * number of dimensions.
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.2.2] — 2024-12-23
 
 ### Security

@@ -183,7 +183,7 @@ fn check_make_grid()
 
 
 #[test]
-fn check_make_grid_with_boundaries()
+fn check_make_grid_with_boundaries_2d()
 {
     let level = 6;
     let mut grid = LinearGrid::<2,1>::new();
@@ -201,7 +201,7 @@ fn check_make_grid_with_boundaries()
     let functor = crate::refinement::surplus::SurplusRefinement(1e-5);
     grid.coarsen(&functor);
     println!("number of points after coarsening={}", grid.len());
-    println!("{}", grid.interpolate([0.2,0.2]).unwrap()[0]);
+    println!("interpolated_value={}", grid.interpolate([0.2,0.2]).unwrap()[0]);
     assert!((grid.interpolate([0.2,0.2]).unwrap()[0]-0.08).abs() < 1e-4);
     let start = std::time::Instant::now();
     let points = vec![[0.2,0.2]; 1e6 as usize];

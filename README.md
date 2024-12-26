@@ -14,8 +14,7 @@ For `LinearGrid`, there are effectively two ways to handle updating values and r
 ## Future goals for this project:
 
 1. Enable refinement/coarsening on the `CombinationGrid`. 
-2. Reduce memory usage for grid iterators used in the `LinearGrid` (Partially complete as of 0.2.2).
-3. Revise data structures for `LinearGrid` to improve data locality.
+2. Revise data structures for `LinearGrid` to improve data locality.
 
 ## Performance:
 
