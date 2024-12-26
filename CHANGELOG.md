@@ -10,6 +10,16 @@
 ### Fixed
 -->
 
+## [0.3.1] — 2024-12-25
+
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+Removed asserts that are no longer needed (and were incorrect) in `GridIteratorWithCache`. 
+### Fixed
+
 ## [0.3.0] — 2024-12-25
 
 ### Security

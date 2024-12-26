@@ -273,7 +273,7 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         {
             if self.data.array[self.offset(dim) + index].has_left_child() 
             {            
-                index = self.compute_left_child(dim, storage).unwrap() as usize;              
+                index = self.compute_left_child(dim, storage) as usize;              
             }
         }
         else
@@ -352,7 +352,7 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         }        
     }
     #[inline]
-    pub fn compute_left_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32>
+    fn compute_left_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> u32
     {
         let original_node = &self.data.array[self.offset(dim) + self.index];
         let node_index = storage[self.index].index[dim];
@@ -362,20 +362,21 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
             let dim_index = storage[original_node.down as usize].index[dim];
             if dim_index == (2*node_index - 1)
             {
-                Some(index)
+                index
             }
             else
             {               
-                Some(self.data.array[self.offset(dim) + index as usize].left)
+                self.data.array[self.offset(dim) + index as usize].left
             }
         }
         else
         {
-            None
+            // We check that the left child exists before this is called, so this should never panic.
+            panic!("No left child found for node");
         }
     }
     #[inline]
-    fn compute_right_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> Option<u32>
+    fn compute_right_child(&self, dim: usize, storage: &SparseGridStorage<D>) -> u32
     {
         let original_node = &self.data.array[self.offset(dim) + self.index];
         let node_index = storage[self.index].index[dim];
@@ -385,16 +386,17 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
             let dim_index = storage[original_node.down as usize].index[dim];
             if dim_index == 2*node_index + 1
             {
-                Some(index)
+                index
             }
             else
-            {              
-                Some(self.data.array[self.offset(dim) + index as usize].right)
+            {   
+                // We check that the right child exists before this is called, so this should never panic.           
+                self.data.array[self.offset(dim) + index as usize].right
             }
         }
         else
         {
-            None
+            panic!("No right child found for node");
         }
     }
 
@@ -482,13 +484,12 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         {
             true => 
             {                
-                self.index = self.compute_left_child(dim, storage).unwrap() as usize;
+                self.index = self.compute_left_child(dim, storage) as usize;
                 
                 true
             },
             false => 
             {                
-                assert_eq!(self.compute_left_child(dim, storage), None);
                 false
             },
         }        
@@ -500,12 +501,11 @@ impl<'b, const D: usize> GridIteratorWithCache<'b,  D>
         {
             true => 
             {                
-                self.index = self.compute_right_child(dim, storage).unwrap() as usize;
+                self.index = self.compute_right_child(dim, storage) as usize;
                 true
             },
             false => 
-            {        
-                assert_eq!(self.compute_right_child(dim, storage), None);        
+            {             
                 false
             },
         }         
