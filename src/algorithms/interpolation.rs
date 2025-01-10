@@ -1,31 +1,32 @@
 use crate::{ basis::base::Basis, errors::SGError, iterators::grid_iterator_cache::GridIteratorWithCache};
-
-use super::basis_evaluation::BasisEvaluation;
+use super::{basis_evaluation::BasisEvaluation, basis_evalution_with_boundary::eval_boundary};
 
 pub(crate) struct InterpolationOperation<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis>(pub bool, pub BasisEvaluation<'a, D, DIM_OUT, BASIS>);
 
 
-impl<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis> InterpolationOperation<'a, D, DIM_OUT, BASIS>
+impl<const D: usize, const DIM_OUT: usize, BASIS: Basis> InterpolationOperation<'_, D, DIM_OUT, BASIS>
 {
-    #[inline]
-    fn process_affected_basis_functions(&self, alpha: &[[f64; DIM_OUT]], results: Vec<(usize, f64)>) -> Result<[f64; DIM_OUT], SGError>
-    {
-        let mut r = [0.0; DIM_OUT];
-        for (seq, value) in results
-        {
-            (0..DIM_OUT).for_each(|d| {
-                r[d] += alpha[seq][d] * value;
-            });
-        }
-        Ok(r)
-    }
+
     #[inline]
     pub(crate) fn interpolate(&self, x: [f64; D], alpha: &[[f64; DIM_OUT]], iterator: &mut GridIteratorWithCache<D>) -> Result<[f64; DIM_OUT], SGError>
     {
         match self.0
         {
-            true => self.process_affected_basis_functions(alpha, 
-                crate::algorithms::affected_basis_functions::get_affected_basis_functions(x, &self.1.1, self.1.0, iterator)),
+            true =>
+            {
+                let mut result = [0.0; DIM_OUT];                            
+                iterator.reset_to_level_zero();
+                let xscaled = if let Some(bbox) = self.1.0.bounding_box()
+                {
+                    bbox.to_unit_coordinate(&x)
+                }
+                else
+                {
+                    x
+                };
+                eval_boundary(self.1.0, &self.1.1, &xscaled, 0, 1.0, iterator, alpha, &mut result);    
+                Ok(result)
+                },
             false =>  self.1.eval(x, alpha),
         }       
     }

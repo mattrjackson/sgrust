@@ -3,7 +3,7 @@ use crate::{basis::base::Basis, errors::SGError, iterators::grid_iterator::GridI
 
 pub struct BasisEvaluation<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis>(pub &'a SparseGridStorage<D>, pub [BASIS; D]);
 
-impl <'a, const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'a, D, DIM_OUT, BASIS>
+impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D, DIM_OUT, BASIS>
 {
     pub(crate) fn basis(&self, dim: usize) -> &BASIS
     {

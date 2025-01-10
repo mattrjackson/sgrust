@@ -1,5 +1,5 @@
 pub(crate) mod sweep;
-pub mod affected_basis_functions;
+pub mod basis_evalution_with_boundary;
 pub mod basis_evaluation;
 pub mod coarsening;
 pub mod integration;

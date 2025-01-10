@@ -448,7 +448,7 @@ impl<'a, const D: usize>  PointIterator<'a, D>
     }
 }
 
-impl<'a, const D: usize> Iterator for PointIterator<'a, D>
+impl<const D: usize> Iterator for PointIterator<'_, D>
 {
     type Item=[f64; D];
 

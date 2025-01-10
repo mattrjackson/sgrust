@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+
+## [0.3.3] — 2025-01-10
+
+### Security
+### Added
+### Changed
+Slightly improve performance for larger grids by removing needless allocations in boundary evalution. 
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.3.2] — 2024-12-25
 
 ### Security

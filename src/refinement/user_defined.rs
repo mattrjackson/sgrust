@@ -14,7 +14,7 @@ pub struct UserDefinedRefinement<'a, const D: usize, const DIM_OUT: usize>
     pub threshold: f64,
 }
 
-impl<'a, const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for UserDefinedRefinement<'a, D, DIM_OUT>
+impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for UserDefinedRefinement<'_, D, DIM_OUT>
 {
     fn eval(&self, storage: &crate::storage::linear_grid::SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], seq: usize) -> f64 {
         (self.fun_eval)(storage, alpha, values, seq)

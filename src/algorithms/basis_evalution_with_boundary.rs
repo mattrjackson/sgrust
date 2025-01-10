@@ -1,8 +1,9 @@
 use crate::{basis::base::Basis, iterators::grid_iterator_cache::GridIteratorWithCache, storage::linear_grid::SparseGridStorage};
 
 #[inline]
-fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basis: &[BASIS; D], x: &[f64; D], 
-    dim: usize, value: f64, iterator: &mut GridIteratorWithCache<D>, result: &mut Vec<(usize, f64)>)
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basis: &[BASIS; D], x: &[f64; D], 
+    dim: usize, value: f64, iterator: &mut GridIteratorWithCache<D>, alpha: &[[f64; DIM_OUT]], result: &mut [f64; DIM_OUT])
 {
     if value.abs() < 1e-14
     {
@@ -17,11 +18,15 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
             let new_value = basis[dim].eval(level, work_index, x[dim]);
             if dim == D - 1
             {
-                result.push((iterator.index, value * new_value));
+                #[allow(clippy::needless_range_loop)]
+                for i in 0..DIM_OUT
+                {
+                    result[i] += alpha[iterator.index][i] * value * new_value;
+                }
             }
             else 
             {
-                rec_linear(storage, basis, x, dim + 1, value * new_value, iterator, result);    
+                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result);    
             }
         }
         else
@@ -35,11 +40,15 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
                 let new_value_l = basis[dim].eval(0, 0, x[dim]);
                 if dim == D - 1
                 {
-                    result.push((seq_l, value * new_value_l));
+                    #[allow(clippy::needless_range_loop)]
+                    for i in 0..DIM_OUT
+                    {
+                        result[i] += alpha[seq_l][i] * value * new_value_l;
+                    }
                 }
                 else 
                 {
-                    rec_linear(storage, basis, x, dim + 1, value * new_value_l, iterator, result);
+                    eval_boundary(storage, basis, x, dim + 1, value * new_value_l, iterator, alpha, result);
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
@@ -49,11 +58,15 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
                 let new_value_r = basis[dim].eval(0, 1, x[dim]);
                 if dim == D - 1
                 {
-                    result.push((seq_r, value * new_value_r));
+                    #[allow(clippy::needless_range_loop)]
+                    for i in 0..DIM_OUT
+                    {
+                        result[i] += alpha[seq_r][i] * value * new_value_r;
+                    }
                 }
                 else 
                 {
-                    rec_linear(storage, basis, x, dim + 1, value * new_value_r, iterator, result);
+                    eval_boundary(storage, basis, x, dim + 1, value * new_value_r, iterator, alpha, result);
                 }
             }
         }
@@ -98,20 +111,4 @@ fn rec_linear<const D: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basi
         level += 1;
     }
     iterator.reset_to_left_level_zero(dim, storage);    
-}
-#[inline]
-pub(crate) fn get_affected_basis_functions<const D: usize, BASIS: Basis>(x: [f64; D], basis: &[BASIS; D], storage: &SparseGridStorage<D>,  iterator: &mut GridIteratorWithCache<D>) -> Vec<(usize, f64)>
-{
-    iterator.reset_to_level_zero();
-    let mut result = Vec::with_capacity(2000);
-    let xscaled = if let Some(bbox) = storage.bounding_box()
-    {
-        bbox.to_unit_coordinate(&x)
-    }
-    else
-    {
-        x
-    };
-    rec_linear(storage, basis, &xscaled, 0, 1.0, iterator, &mut result);    
-    result
 }
