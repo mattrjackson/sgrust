@@ -8,7 +8,7 @@ use serde_with::serde_as;
 pub struct GridPoint<const D: usize>
 {
     #[serde_as(as = "[_; D]")]
-    pub level: [u32; D],
+    pub level: [u8; D],
     #[serde_as(as = "[_; D]")]
     pub index: [u32; D],
     pub(crate) is_leaf: bool,
@@ -40,7 +40,7 @@ impl<const D:usize> Ord for GridPoint<D>{
 
 impl<const D: usize> GridPoint<D>
 {
-    pub fn new (level: [u32; D], index: [u32; D], is_leaf: bool) -> Self
+    pub fn new (level: [u8; D], index: [u32; D], is_leaf: bool) -> Self
     {
          Self { level, index, is_leaf}
     }   
@@ -55,15 +55,15 @@ impl<const D: usize> GridPoint<D>
     {        
         self.level_min() > 0
     }   
-    pub fn level_sum(&self) -> u32
+    pub fn level_sum(&self) -> u8
     {
         self.level.iter().sum()
     }
-    pub fn level_max(&self) -> u32
+    pub fn level_max(&self) -> u8
     {
         *self.level.iter().max().unwrap()
     }
-    pub fn level_min(&self) -> u32
+    pub fn level_min(&self) -> u8
     {
         *self.level.iter().min().unwrap()
     }
@@ -388,6 +388,21 @@ pub struct SparseGridData<const D: usize>
     pub(crate) list: Vec<GridPoint<D>>,
     pub(crate) bounding_box: Option<BoundingBox<D>>,
     pub(crate) has_boundary: bool,
+}
+
+impl<const D: usize> Index<usize> for SparseGridData<D>
+{
+    type Output = GridPoint<D>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.list[index]
+    }
+}
+impl<const D: usize> IndexMut<usize> for SparseGridData<D>
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.list[index]
+    }
 }
 
 

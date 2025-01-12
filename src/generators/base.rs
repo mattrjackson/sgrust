@@ -50,7 +50,7 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D
         for i in (1..(1 << l)).step_by(2)
         {
             let is_leaf = l == n;            
-            point.level[0] = l;
+            point.level[0] = l as u8;
             point.index[0] = i;
             point.is_leaf = is_leaf;
             storage.insert_point(point);
@@ -72,12 +72,12 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D
             let mut l = 1;
             // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
             let n = levels[d] as u32;
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) <= n
+            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n as u32
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
-                    let is_leaf = l + level_sum == n + D as u32 - 1;
-                    point.level[d] = l;
+                    let is_leaf = (l + level_sum) as u32 == n + D as u32 - 1;
+                    point.level[d] = l as u8;
                     point.index[d] = i;
                     point.is_leaf = is_leaf;
                     if !first
@@ -112,7 +112,7 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usiz
         for i in (1..(1 << l)).step_by(2)
         {
             let is_leaf = l == n;            
-            point.level[0] = l;
+            point.level[0] = l as u8;
             point.index[0] = i;
             point.is_leaf = is_leaf;
             storage.insert_point(point);
@@ -151,12 +151,12 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usiz
                 continue;
             }
             let level_max = point.level_max();
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) <= n
+            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n as u32
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
-                    let is_leaf = l + level_sum == n + D as u32 - 1;
-                    point.level[d] = l;
+                    let is_leaf = (l + level_sum) as u32 == n + D as u32 - 1;
+                    point.level[d] = l as u8;
                     point.index[d] = i;
                     point.is_leaf = is_leaf;
                     if !first
@@ -184,7 +184,7 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usi
         for i in (1..(1 << l)).step_by(2)
         {
             let is_leaf = l == n;            
-            point.level[0] = l;
+            point.level[0] = l as u8;
             point.index[0] = i;
             point.is_leaf = is_leaf;
             storage.insert_point(point);
@@ -204,8 +204,8 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usi
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
-                    let is_leaf = point.level_sum() == n * D as u32;
-                    point.level[d] = l;
+                    let is_leaf = point.level_sum() as u32 == n as u32 * D as u32;
+                    point.level[d] = l as u8;
                     point.index[d] = i;
                     point.is_leaf = is_leaf;
                     if !first
@@ -267,7 +267,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
         for i in (1..(1 << l)).step_by(2)
         {
             let is_leaf = l == n;            
-            point.level[0] = l;
+            point.level[0] = l as u8;
             point.index[0] = i;
             point.is_leaf = is_leaf;
             storage.insert_point(point);
@@ -302,7 +302,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
             // (the +1 comes from the fact that the newly generated functions
             // will have an additional zero in the d-th dimension)
             let mut first_point = true;
-            if (level_sum + boundary_level + num_zero_levels < n + cur_dim) || (num_zero_levels == cur_dim - 1)
+            if (level_sum as u32 + boundary_level + num_zero_levels < n + cur_dim) || (num_zero_levels == cur_dim - 1)
             {
                 point.level[d as usize] = 0;
                 point.index[d as usize] = 0;
@@ -338,12 +338,12 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
             let mut l = 1;
             let d = d as usize;
             // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
-            let n = levels[d] as u32;
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= upper_bound && l.max(level_max) <= n
+            let n = levels[d];
+            while (l + level_sum) as f64 - (t * l.max(level_max as u8) as f64) <= upper_bound && l.max(level_max as u8) <= n as u8
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
-                    let is_leaf = if l+level_sum == n + D as u32 - 1 { num_zero_levels == 0 } else { false};
+                    let is_leaf = if l as u32 +level_sum as u32 == n as u32 + D as u32 - 1 { num_zero_levels == 0 } else { false};
                     point.level[d] = l;
                     point.index[d] = i;
                     point.is_leaf = is_leaf;
@@ -389,7 +389,7 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
         for i in (1..(1 << l)).step_by(2)
         {
             let is_leaf = l == n;            
-            point.level[0] = l;
+            point.level[0] = l as u8;
             point.index[0] = i;
             point.is_leaf = is_leaf;
             storage.insert_point(point);
@@ -419,11 +419,11 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
                     point.index[d as usize] = 1;
                     storage.insert_point(point);
                 }
-                point.level[d as usize] = l;
+                point.level[d as usize] = l as u8;
                 for i in (1..(1 <<l)).step_by(2)
                 {
                     point.index[d as usize] = i;
-                    point.is_leaf = point.level_sum() == n * D as u32;
+                    point.is_leaf = point.level_sum() as u32 == n as u32* D as u32;
                     storage.insert_point(point);
                 }
             }   

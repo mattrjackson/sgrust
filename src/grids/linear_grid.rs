@@ -171,6 +171,7 @@ fn check_make_grid()
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
     grid.set_values(values.clone()).unwrap();
+    println!("interpolated value={}", grid.interpolate([0.2,0.2]).unwrap()[0]);
     assert!((grid.interpolate([0.2,0.2]).unwrap()[0]-0.08).abs() < 1e-4);
     let start = std::time::Instant::now();
     for _i in 0..1e6 as usize

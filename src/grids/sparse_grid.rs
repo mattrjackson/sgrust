@@ -396,8 +396,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     {
         use crate::algorithms::interpolation::InterpolationOperation;
         let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-        let iterator = &mut GridIteratorWithCache::new(data);
-        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));      
+        let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
+        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));      
         op.interpolate(x, &self.alpha, iterator)       
     }
 
@@ -410,8 +410,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             |(x, y)|
             {
                 let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-                let iterator = &mut GridIteratorWithCache::new(data);
-                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));
+                let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
+                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));
                 if let Some(bbox) = self.bounding_box()
                 {
                     if !bbox.contains(x)
@@ -446,22 +446,22 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             |(x, y)|
             {
                 let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-                let iterator = &mut GridIteratorWithCache::new(data);
-                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));                
+                let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
+                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));                
                 *y = op.interpolate(*x, &self.alpha, iterator);
             }
         );       
        results
     }
 
-    pub fn integrate_isotropic<QUADRATURE: IsotropicQuadrature<D, DIM_OUT>>(&self, op: &QUADRATURE) -> [f64; DIM_OUT]
+    pub fn integrate_isotropic<QUADRATURE: IsotropicQuadrature<f64, D, DIM_OUT>>(&self, op: &QUADRATURE) -> [f64; DIM_OUT]
     {
-        op.eval(self.storage(), &self.alpha)
+        op.eval(&self.storage().data, &self.alpha)
     }
 
     pub fn eval_anisotropic_quadrature<QUADRATURE: AnisotropicQuadrature<D, DIM_OUT> + ?Sized>(&self, op: &QUADRATURE, index: usize, dim: usize) -> [f64; DIM_OUT]
     {
-        op.eval(self.storage(), index, dim)
+        op.eval(&self.storage().data, index, dim)
     }
 
     pub fn to_real_coordinate(&self, index: &GridPoint<D>) -> [f64; D]

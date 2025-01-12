@@ -1,6 +1,22 @@
 use crate::storage::linear_grid::{GridPoint, SparseGridStorage};
 
 
+pub trait GridIteratorT<const D: usize>
+{
+    fn node(&self) -> &GridPoint<D>;
+    fn index(&self) -> usize;
+    fn reset_to_level_zero(&mut self) -> bool;
+    fn reset_to_left_level_zero(&mut self, dim: usize) -> bool;
+    fn reset_to_right_level_zero(&mut self, dim: usize) -> bool;
+    fn reset_to_level_one(&mut self, dim: usize) -> bool;
+    fn left_child(&mut self, dim: usize) -> bool;
+    fn right_child(&mut self, dim: usize) -> bool;
+    fn up(&mut self, dim: usize) -> bool;
+    fn is_inner_point(&self) -> bool;
+    fn is_leaf(&self) -> bool;
+
+}
+
 
 pub(crate) struct GridIterator<'a, const D: usize>
 {
@@ -17,11 +33,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
         let index = GridPoint::default();
         Self { storage, index, seq: storage.sequence_number(&index) }
     }
-    #[inline(always)]
-    pub(crate) fn index(&self) -> &GridPoint<D>
-    {
-        &self.index
-    }
+    
     #[inline(always)]
     pub fn valid_seq(&self) -> bool
     {
@@ -34,73 +46,7 @@ impl<'a, const D: usize> GridIterator<'a, D>
         self.seq = self.storage.sequence_number(&self.index);
     }
 
-    pub(crate) fn reset_to_level_zero(&mut self)
-    {        
-        self.index.index = [0; D];      
-        self.index.level = [0; D];  
-        
-        self.seq = self.storage.sequence_number(&self.index);
-    }
-    pub(crate) fn reset_to_left_level_zero(&mut self, dim: usize)
-    {
-        self.index.index[dim] = 0;
-        self.index.level[dim] = 0;
-        
-        self.seq = self.storage.sequence_number(&self.index);        
-    }
-    pub(crate) fn reset_to_right_level_zero(&mut self, dim: usize)
-    {
-        self.index.level[dim] = 0;
-        self.index.index[dim] = 1;       
-        
-        self.seq = self.storage.sequence_number(&self.index);        
-    } 
-    pub(crate) fn reset_to_level_one(&mut self, dim: usize)
-    {
-        self.index.level[dim] = 1;
-        self.index.index[dim] = 1;
-        
-        self.seq = self.storage.sequence_number(&self.index);
-    }
-    pub(crate) fn left_child(&mut self, dim: usize)
-    {
-        let i = self.index.index[dim];
-        if i == 0
-        {
-            self.seq = None;
-            return;
-        }
-        let l = self.index.level[dim];
-        self.index.level[dim] = l + 1;
-        self.index.index[dim] = (2 * i) - 1;
-        
-        self.seq = self.storage.sequence_number(&self.index);
-    }
-    pub(crate) fn right_child(&mut self, dim: usize)
-    {
-        let i = self.index.index[dim];
-        let l = self.index.level[dim];
-        self.index.level[dim] = l + 1;
-        self.index.index[dim] = 2 * i + 1;
-        
-        self.seq = self.storage.sequence_number(&self.index);
-    }
-    pub(crate) fn up(&mut self, dim: usize)
-    {
-        let mut i = self.index.index[dim];
-        let l = self.index.level[dim];
-        if l == 0
-        {
-            self.seq = None;
-            return;
-        }
-        i /= 2;
-        i += if i % 2 == 0 {1} else {0};       
-        self.index.level[dim] = l - 1;
-        self.index.index[dim] = i;
-        
-        self.seq = self.storage.sequence_number(&self.index);
-    }
+    
     pub(crate) fn step_left(&mut self, dim: usize)
     {
         let i = self.index.index[dim];     
@@ -118,24 +64,6 @@ impl<'a, const D: usize> GridIterator<'a, D>
         let i = self.index.index[dim];
         self.index.index[dim] = i + 2;
         self.seq = self.storage.sequence_number(&self.index);
-    }
-
-    #[allow(unused)]
-    pub(crate) fn is_inner_point(&self) -> bool
-    {
-        self.index.is_inner_point()
-    }
-
-    pub(crate) fn is_leaf(&self) -> bool
-    {
-        if let Some(seq) = self.seq
-        {
-            self.storage[seq].is_leaf()
-        }
-        else
-        {
-            true
-        }
     }
 
     #[allow(unused)]
@@ -213,5 +141,112 @@ impl<'a, const D: usize> GridIterator<'a, D>
         self.index.index[dim] = orig_index;
         self.index.level[dim] = orig_level;
         depth
+    }
+}
+
+impl<const D: usize> GridIteratorT<D> for GridIterator<'_, D>
+{
+    #[inline(always)]
+    fn node(&self) -> &GridPoint<D>
+    {
+        &self.index
+    }
+    
+    fn index(&self) -> usize
+    {
+        self.seq.unwrap()
+    }
+
+    fn reset_to_level_zero(&mut self) -> bool
+    {        
+        self.index.index = [0; D];      
+        self.index.level = [0; D];          
+        self.seq = self.storage.sequence_number(&self.index);
+        true
+    }
+    fn reset_to_left_level_zero(&mut self, dim: usize) -> bool
+    {
+        self.index.index[dim] = 0;
+        self.index.level[dim] = 0;
+        
+        self.seq = self.storage.sequence_number(&self.index);        
+        true
+    }
+    fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
+    {
+        self.index.level[dim] = 0;
+        self.index.index[dim] = 1;       
+        
+        self.seq = self.storage.sequence_number(&self.index);  
+        true      
+    } 
+    fn reset_to_level_one(&mut self, dim: usize) -> bool
+    {
+        self.index.level[dim] = 1;
+        self.index.index[dim] = 1;
+        
+        self.seq = self.storage.sequence_number(&self.index);
+        true
+    }
+    fn left_child(&mut self, dim: usize) -> bool
+    {
+        let i = self.index.index[dim];
+        if i == 0
+        {
+            self.seq = None;
+            return false;
+        }
+        let l = self.index.level[dim];
+        self.index.level[dim] = l + 1;
+        self.index.index[dim] = (2 * i) - 1;
+        
+        self.seq = self.storage.sequence_number(&self.index);
+        true
+    }
+    fn right_child(&mut self, dim: usize) -> bool
+    {
+        let i = self.index.index[dim];
+        let l = self.index.level[dim];
+        self.index.level[dim] = l + 1;
+        self.index.index[dim] = 2 * i + 1;
+        
+        self.seq = self.storage.sequence_number(&self.index);
+        true
+    }
+    fn up(&mut self, dim: usize) -> bool
+    {
+        let mut i = self.index.index[dim];
+        let l = self.index.level[dim];
+        if l == 0
+        {
+            self.seq = None;
+            return false;
+        }
+        i /= 2;
+        i += if i % 2 == 0 {1} else {0};       
+        self.index.level[dim] = l - 1;
+        self.index.index[dim] = i;
+        
+        self.seq = self.storage.sequence_number(&self.index);
+        true
+    }
+
+    
+    #[allow(unused)]
+    fn is_inner_point(&self) -> bool
+    {
+        self.index.is_inner_point()
+    }
+
+    fn is_leaf(&self) -> bool
+    {
+        if let Some(seq) = self.seq
+        {
+            self.storage[seq].is_leaf()
+        }
+        else
+        {
+            true
+        }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{algorithms::sweep::SweepFunction, iterators::grid_iterator::GridIterator, storage::linear_grid::SparseGridStorage};
+use crate::{algorithms::sweep::SweepFunction, iterators::grid_iterator::{GridIterator, GridIteratorT}, storage::linear_grid::SparseGridStorage};
 
 
 pub trait HierarchisationOperation<const D: usize, const DIM_OUT: usize> : Copy

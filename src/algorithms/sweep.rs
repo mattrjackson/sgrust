@@ -1,4 +1,4 @@
-use crate::{iterators::grid_iterator::GridIterator, storage::linear_grid::SparseGridStorage};
+use crate::{iterators::grid_iterator::{GridIterator, GridIteratorT}, storage::linear_grid::SparseGridStorage};
 
 pub trait SweepFunction<const D: usize, T, R>
 {
@@ -41,7 +41,7 @@ pub(crate) fn sweep_boundary_recursive_in_place<const D: usize, T, R, F: SweepFu
         }
         else
         {
-            let current_index = iterator.index();
+            let current_index = iterator.node();
             let d = dim_list[dim_rem - 1];
             let current_level = current_index.level[d];
             if current_level > 0

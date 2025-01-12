@@ -1,10 +1,14 @@
-use crate::{ basis::base::Basis, storage::linear_grid::SparseGridStorage};
+use std::ops::AddAssign;
+
+use num_traits::Float;
+
+use crate::{ basis::base::Basis, storage::linear_grid::SparseGridData};
 
 
 
-pub trait IsotropicQuadrature<const D: usize, const DIM_OUT: usize>
+pub trait IsotropicQuadrature<T: Float + AddAssign, const D: usize, const DIM_OUT: usize>
 {
-    fn eval(&self, _storage: &SparseGridStorage<D>, _alpha: &[[f64; DIM_OUT]]) -> [f64; DIM_OUT]
+    fn eval(&self, _storage: &SparseGridData<D>, _alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {
         panic!("Isotropic Quadrature not supported for this basis.");
     }
@@ -12,7 +16,7 @@ pub trait IsotropicQuadrature<const D: usize, const DIM_OUT: usize>
 
 pub trait AnisotropicQuadrature<const D: usize, const DIM_OUT: usize>
 {
-    fn eval(&self, storage: &SparseGridStorage<D>, index: usize, dim: usize) -> [f64; DIM_OUT];
+    fn eval(&self, storage: &SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT];
 }
 
 pub trait BasisAndQuadrature<const D: usize, const DIM_OUT: usize> : Quadrature<D, DIM_OUT> + Basis{}

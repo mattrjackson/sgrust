@@ -1,7 +1,8 @@
-use crate::{basis::base::Basis, errors::SGError, iterators::grid_iterator::GridIterator, storage::linear_grid::SparseGridStorage};
+use num_traits::Float;
+use crate::{basis::base::Basis, errors::SGError, iterators::grid_iterator::GridIteratorT, storage::linear_grid::SparseGridData};
 
 
-pub struct BasisEvaluation<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis>(pub &'a SparseGridStorage<D>, pub [BASIS; D]);
+pub struct BasisEvaluation<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis>(pub &'a SparseGridData<D>, pub [BASIS; D]);
 
 impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D, DIM_OUT, BASIS>
 {
@@ -9,21 +10,22 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
     {
         &self.1[dim]
     }
-    fn recursive_eval(&self, point: [f64; D], current_dim: usize, value: f64, iterator: &mut GridIterator<D>, source: [u32; D], alpha: &[[f64; DIM_OUT]]) -> [f64; DIM_OUT]
+    fn recursive_eval<Iterator: GridIteratorT<D>, T: Float +std::ops::AddAssign> (&self, point: [f64; D], current_dim: usize, 
+        value: T, iterator: &mut Iterator, source: [u32; D], alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {
         const MAX_LEVEL: u32 = 31;
         let idx = source[current_dim];
         let mut level = 1;
-        let mut result = [0.0; DIM_OUT];
+        let mut result = [T::zero(); DIM_OUT];
         
-        while let Some(seq) = iterator.seq()
+        loop
         {
-            let index = iterator.index().index[current_dim];
-            let val = self.basis(current_dim).eval(level, index, point[current_dim]) * value;
+            let index = iterator.node().index[current_dim];
+            let val = T::from(self.basis(current_dim).eval(level, index, point[current_dim])).unwrap() * value;
             if current_dim == D - 1
             {
                 (0..DIM_OUT).for_each(|d| {
-                    result[d] += alpha[seq][d] * val;
+                    result[d] += alpha[iterator.index()][d] * val;
                 });
             }
             else 
@@ -47,23 +49,25 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
 
             if go_right 
             {
-                iterator.right_child(current_dim);
+                if !iterator.right_child(current_dim)
+                {
+                    break;
+                }
             } 
-            else 
+            else if !iterator.left_child(current_dim)
             {
-                iterator.left_child(current_dim);
-            }
-        }
-        
+                break;
+            }            
+        }        
         iterator.reset_to_level_one(current_dim);
         result
     }
 
-    pub fn eval(&self, point: [f64; D], alpha: &[[f64; DIM_OUT]]) -> Result<[f64; DIM_OUT], SGError> 
-    {
-        let mut iterator = GridIterator::new(self.0);
+    pub fn eval<Iterator: GridIteratorT<D>, T: Float +std::ops::AddAssign>(&self, point: [f64; D], alpha: &[[T; DIM_OUT]], 
+        iterator: &mut Iterator) -> Result<[T; DIM_OUT], SGError> 
+    {        
         let bits = std::mem::size_of::<u32>() * 8;
-        let bbox: Option<crate::storage::linear_grid::BoundingBox<D>> = self.0.bounding_box();
+        let bbox: Option<crate::storage::linear_grid::BoundingBox<D>> = self.0.bounding_box;
         let unit_coord =
         if let Some(bbox) = bbox
         {
@@ -91,6 +95,6 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
                 source[d] = (val + 1.0) as u32;
             }
         }
-        Ok(self.recursive_eval(unit_coord, 0, 1.0, &mut iterator, source, alpha))
+        Ok(self.recursive_eval(unit_coord, 0,  T::from(1.0).unwrap(), iterator, source, alpha))
     }
 }

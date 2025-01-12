@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use sgrust::{errors::SGError, grids::{linear_grid::LinearGrid, sparse_grid::SparseGrid}};
+use sgrust::{errors::SGError, grids::{immutable_linear_grid::ImmutableLinearGrid, linear_grid::LinearGrid, sparse_grid::SparseGrid}};
 
 fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
 {
@@ -38,5 +38,20 @@ fn run_six_d(c: &mut Criterion)
     c.bench_function("6d", |b|b.iter(||six_d(&grid).unwrap()));
 }
 
-criterion_group!(benches, run_six_d);
+fn six_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 6,1>)-> Result<(), SGError>
+{
+    // Compare the values...
+    let x = [[0.3, 0.1, 0.2, 0.1, 0.4, 0.7]; 1000];
+    let _value = grid.interpolate_batch(&x);
+    
+    Ok(())
+}
+
+fn run_six_d_immutable_graph(c: &mut Criterion)
+{
+    let grid: ImmutableLinearGrid<f32, 6, 1> = build_six_d_grid().unwrap().into();
+    c.bench_function("6d", |b|b.iter(||six_d_immutable_graph(&grid).unwrap()));
+}
+
+criterion_group!(benches, run_six_d, run_six_d_immutable_graph);
 criterion_main!(benches);

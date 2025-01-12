@@ -1,4 +1,8 @@
-use crate::{algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature}, storage::linear_grid::SparseGridStorage};
+use std::ops::AddAssign;
+
+use num_traits::Float;
+
+use crate::{algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature}, storage::linear_grid::SparseGridData};
 
 use super::base::Basis;
 
@@ -121,34 +125,34 @@ impl Basis for LinearBasis
     
 }
 
-impl<const D: usize, const DIM_OUT: usize> IsotropicQuadrature<D, DIM_OUT> for LinearBasis
+impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize> IsotropicQuadrature<T, D, DIM_OUT> for LinearBasis
 {
     #[inline]
-    fn eval(&self, storage: &SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]]) -> [f64; DIM_OUT]
+    fn eval(&self, storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {        
-        let volume = if let Some(bbox) = storage.bounding_box()
+        let volume = if let Some(bbox) = storage.bounding_box
         {
-            bbox.volume()
+            T::from(bbox.volume()).unwrap()
         }
         else
         {
-            1.0
+            T::from(1.0).unwrap()
         };
-        let mut integral = [0.0; DIM_OUT];
-        for (i, point) in storage.list().iter().enumerate()
+        let mut integral = [T::zero(); DIM_OUT];
+        for (i, point) in storage.iter().enumerate()
         {
-            let mut pow = 2.0_f64.powf(-(point.level_sum() as f64));
+            let mut pow = T::from(2.0_f64.powf(-(point.level_sum() as f64))).unwrap();
             if !point.is_inner_point()
             {
                 let mut num_boundaries = 0;
                 for d in 0..D
                 {
-                    if point.index[d] == 0 || 2_usize.pow(point.level[d]) == point.index[d] as usize
+                    if point.index[d] == 0 || 2_usize.pow(point.level[d] as u32) == point.index[d] as usize
                     {
                         num_boundaries += 1;
                     }
                 }
-                pow *= 2.0_f64.powi(-num_boundaries);
+                pow = pow * T::from(2.0_f64.powi(-num_boundaries)).unwrap();
             }                
             #[allow(clippy::needless_range_loop)]
             for dim in 0..DIM_OUT
@@ -159,7 +163,7 @@ impl<const D: usize, const DIM_OUT: usize> IsotropicQuadrature<D, DIM_OUT> for L
         #[allow(clippy::needless_range_loop)]
         for dim in 0..DIM_OUT
         {
-            integral[dim] *= volume;
+            integral[dim] = integral[dim] * volume;
         }
         integral
     }
@@ -170,15 +174,15 @@ impl<const D: usize, const DIM_OUT: usize> IsotropicQuadrature<D, DIM_OUT> for L
 impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for LinearBasis
 {
     #[inline]
-    fn eval(&self, storage: &SparseGridStorage<D>, index: usize, dim: usize) -> [f64; DIM_OUT]
+    fn eval(&self, storage: &SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT]
     {   
         let mut integral_component = [1.0; DIM_OUT];
-        let point = &storage.list()[index];
+        let point = &storage[index];
         let mut weight = 2.0_f64.powf(-(point.level[dim] as f64));
         if !point.is_inner_point()
         {
             let mut num_boundaries = 0;
-            if point.index[dim] == 0 || 2_usize.pow(point.level[dim]) == point.index[dim] as usize
+            if point.index[dim] == 0 || 2_usize.pow(point.level[dim] as u32) == point.index[dim] as usize
             {
                 num_boundaries += 1;
             }

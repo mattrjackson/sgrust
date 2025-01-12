@@ -1,11 +1,13 @@
-use crate::{basis::base::Basis, iterators::grid_iterator_cache::GridIteratorWithCache, storage::linear_grid::SparseGridStorage};
+use num_traits::Float;
+
+use crate::{basis::base::Basis, iterators::{grid_iterator::GridIteratorT, grid_iterator_cache::GridIteratorWithCache}, storage::linear_grid::SparseGridData};
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(storage: &SparseGridStorage<D>, basis: &[BASIS; D], x: &[f64; D], 
-    dim: usize, value: f64, iterator: &mut GridIteratorWithCache<D>, alpha: &[[f64; DIM_OUT]], result: &mut [f64; DIM_OUT])
+pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
+    dim: usize, value: T, iterator: &mut GridIteratorWithCache<D>, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
 {
-    if value.abs() < 1e-14
+    if value.abs().to_f64().unwrap() < 1e-14
     {
         return;
     }
@@ -15,7 +17,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
         let work_index = storage[iterator.index].index[dim];        
         if level > 0
         {
-            let new_value = basis[dim].eval(level, work_index, x[dim]);
+            let new_value = T::from(basis[dim].eval(level, work_index, x[dim])).unwrap();
             if dim == D - 1
             {
                 #[allow(clippy::needless_range_loop)]
@@ -34,10 +36,10 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
             // handle boundaries if we are on level 0
             // level 0, index 0
             // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
-            if iterator.reset_to_left_level_zero(dim, storage)
+            if iterator.reset_to_left_level_zero(dim)
             {
                 let seq_l = iterator.index;
-                let new_value_l = basis[dim].eval(0, 0, x[dim]);
+                let new_value_l = T::from(basis[dim].eval(0, 0, x[dim])).unwrap();
                 if dim == D - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -52,10 +54,10 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
-            if iterator.reset_to_right_level_zero(dim, storage)
+            if iterator.reset_to_right_level_zero(dim)
             {
                 let seq_r = iterator.index;
-                let new_value_r = basis[dim].eval(0, 1, x[dim]);
+                let new_value_r = T::from(basis[dim].eval(0, 1, x[dim])).unwrap();
                 if dim == D - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -71,7 +73,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
             }
         }
         // Can't descend any further.
-        if iterator.is_leaf(storage)
+        if iterator.is_leaf()
         {
             break;
         }
@@ -88,11 +90,11 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
             {
                 break;
             }
-            if x > x_coord && !iterator.right_child(dim, storage)
+            if x > x_coord && !iterator.right_child(dim)
             {                
                 break;
             }             
-            if x <= x_coord && !iterator.left_child(dim, storage)
+            if x <= x_coord && !iterator.left_child(dim)
             {                 
                 break;
             }
@@ -103,12 +105,12 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis>(
             {
                 break;
             }            
-            if !iterator.reset_to_level_one(dim, storage)
+            if !iterator.reset_to_level_one(dim)
             {
                 break;
             }            
         }
         level += 1;
     }
-    iterator.reset_to_left_level_zero(dim, storage);    
+    iterator.reset_to_left_level_zero(dim);    
 }
