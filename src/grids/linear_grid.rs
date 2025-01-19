@@ -2,7 +2,7 @@ use serde_with::serde_as;
 use crate::algorithms::refinement::RefinementFunctor;
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
-use crate::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
+use crate::algorithms::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
 use crate::storage::linear_grid::SparseGridData;
 use crate::generators::base::*;
 use serde::{Serialize, Deserialize};

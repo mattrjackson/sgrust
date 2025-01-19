@@ -7,7 +7,7 @@ use crate::algorithms::integration::{AnisotropicQuadrature, IsotropicQuadrature}
 use crate::algorithms::refinement::{BaseRefinement, RefinementFunctor, SparseGridRefinement};
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
-use crate::hierarchisation::HierarchisationOperation;
+use crate::algorithms::hierarchisation::HierarchisationOperation;
 use crate::iterators::grid_iterator_cache::AdjacencyGridIterator;
 use crate::storage::linear_grid::{BoundingBox, GridPoint, PointIterator, SparseGridData};
 use crate::generators::base::*;

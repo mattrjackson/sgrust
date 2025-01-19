@@ -5,7 +5,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallel
 use serde::Serialize;
 use serde_with::serde_as;
 
-use crate::{algorithms::{basis_evaluation::BasisEvaluation, integration::IsotropicQuadrature}, basis::linear::LinearBasis, errors::SGError, iterators::grid_iterator_cache::{AdjacencyGridIterator}, storage::linear_grid::{BoundingBox, SparseGridData}};
+use crate::{algorithms::{basis_evaluation::BasisEvaluation, integration::IsotropicQuadrature}, basis::linear::LinearBasis, errors::SGError, iterators::grid_iterator_cache::AdjacencyGridIterator, storage::linear_grid::{BoundingBox, SparseGridData}};
 
 use super::{linear_grid::LinearGrid, sparse_grid::SparseGrid};
 
