@@ -5,7 +5,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallel
 use serde::Serialize;
 use serde_with::serde_as;
 
-use crate::{algorithms::{basis_evaluation::BasisEvaluation, integration::IsotropicQuadrature}, basis::linear::LinearBasis, errors::SGError, iterators::grid_iterator_cache::{GridIteratorData, GridIteratorWithCache}, storage::linear_grid::{BoundingBox, SparseGridData}};
+use crate::{algorithms::{basis_evaluation::BasisEvaluation, integration::IsotropicQuadrature}, basis::linear::LinearBasis, errors::SGError, iterators::grid_iterator_cache::AdjacencyGridIterator, storage::linear_grid::{BoundingBox, SparseGridData}};
 
 use super::{linear_grid::LinearGrid, sparse_grid::SparseGrid};
 
@@ -18,7 +18,6 @@ use super::{linear_grid::LinearGrid, sparse_grid::SparseGrid};
 #[derive(Default,Serialize, serde::Deserialize, Clone)]
 pub struct ImmutableLinearGrid<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
 {
-    adjacency_data: GridIteratorData<D>,
     storage: SparseGridData<D>,
     #[serde_as(as = "Vec<[_; DIM_OUT]>")]
     alpha: Vec<[T; DIM_OUT]>,
@@ -41,7 +40,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     pub fn points(&self) -> Vec<[f64; D]>
     {
         let mut list = Vec::new();
-        for index in self.storage.iter()
+        for index in self.storage.nodes().iter()
         {
             let point = index.unit_coordinate();
             list.push(self.bounding_box().to_real_coordinate(&point));
@@ -55,14 +54,9 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     }
 
     #[allow(unused)]
-    pub(crate) fn new(alpha: Vec<[T; DIM_OUT]>, values: Vec<[T; DIM_OUT]>, adjacency_data: GridIteratorData<D>, storage: SparseGridData<D>) -> Self
+    pub(crate) fn new(alpha: Vec<[T; DIM_OUT]>, values: Vec<[T; DIM_OUT]>, storage: SparseGridData<D>) -> Self
     {
-        Self { alpha, values, adjacency_data, storage }
-    }
-    #[allow(unused)]
-    pub(crate) fn adjacency_data(&self) -> &GridIteratorData<D>
-    {
-        &self.adjacency_data
+        Self { alpha, values, storage }
     }
 
     pub fn get_storage(&self) -> &SparseGridData<D>
@@ -70,9 +64,9 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         &self.storage
     }
 
-    pub fn bounding_box(&self) -> BoundingBox<D>
+    pub fn bounding_box(&self) -> &BoundingBox<D>
     {
-        self.storage.bounding_box.unwrap_or_default()
+        &self.storage.bounding_box
     }
 
     pub fn get_num_points(&self) -> usize
@@ -97,7 +91,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     pub fn interpolate_unchecked(&self, x: [f64; D]) -> Result<[T; DIM_OUT], SGError>
     {
         use crate::algorithms::interpolation::InterpolationOperation;        
-        let iterator = &mut GridIteratorWithCache::new(&self.adjacency_data, &self.storage);
+        let iterator = &mut AdjacencyGridIterator::new( &self.storage);
         let op = InterpolationOperation(self.storage.has_boundary, BasisEvaluation(&self.storage, [LinearBasis; D]));      
         op.interpolate(x, &self.alpha, iterator)       
     }
@@ -110,7 +104,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         x.par_iter().zip(results.par_iter_mut()).for_each(
             |(x, y)|
             {
-                let iterator = &mut GridIteratorWithCache::new(&self.adjacency_data, &self.storage);
+                let iterator = &mut AdjacencyGridIterator::new(&self.storage);
                 let op = InterpolationOperation(self.storage.has_boundary, BasisEvaluation(&self.storage, [LinearBasis; D]));
                 
                 if !self.bounding_box().contains(x)
@@ -135,7 +129,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         x.par_iter().zip(results.par_iter_mut()).for_each(
             |(x, y)|
             {
-                let iterator: &mut GridIteratorWithCache<'_, '_, D> = &mut GridIteratorWithCache::new(&self.adjacency_data, &self.storage);
+                let iterator = &mut AdjacencyGridIterator::new(&self.storage);
                 let op = InterpolationOperation(self.storage.has_boundary, BasisEvaluation(&self.storage, [LinearBasis; D]));                
                 *y = op.interpolate(*x, &self.alpha, iterator);
             }
@@ -183,14 +177,6 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     const D: usize, const DIM_OUT: usize> From<LinearGrid<D,DIM_OUT>> for ImmutableLinearGrid<T, D, DIM_OUT>
 {
     fn from(value: LinearGrid<D,DIM_OUT>) -> Self {
-        let adjacency_data = if let Some(data) = &value.0.iterator_data
-        {
-            data.clone()
-        }
-        else
-        {
-            GridIteratorData::new(value.storage())
-        };
         let alpha: Vec<[T; DIM_OUT]> = value.alpha().iter().map(|alpha|
         {
             std::array::from_fn(|i|T::from(alpha[i]).unwrap())
@@ -200,7 +186,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
             {
                 std::array::from_fn(|i|T::from(value[i]).unwrap())
             }).collect();
-        Self { adjacency_data, storage: value.storage().data.clone(), alpha, values }
+        Self { storage: value.storage().clone(), alpha, values }
     }
 }
 
@@ -212,7 +198,7 @@ fn check_size_difference()
      // using a full grid here, but a sparse grid could be used instead...
      grid.full_grid_with_boundaries(3);
  
-     let f = |x: &[f64; 6]|
+     let f = |x: [f64; 6]|
      {
          let mut r = [0.0];
          (0..6).for_each(|i| {
@@ -221,10 +207,10 @@ fn check_size_difference()
          r
      };
  
-     let values = grid.points().iter().map(f).collect();
+     let values = grid.points().map(f).collect();
      grid.set_values(values).unwrap();    
 
-     grid.save_full("grid.bin").unwrap();
+     grid.save("grid.bin").unwrap();
      let igrid: ImmutableLinearGrid<f32, 6,1> = grid.into();
      igrid.save("igrid.bin").unwrap();
 

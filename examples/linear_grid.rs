@@ -84,8 +84,7 @@ fn six_d()-> Result<(), SGError>
         r
     };
 
-    let values = grid.points().iter().map(f).collect();
-    grid.set_values(values)?;
+    grid.update_values(&mut f);
 
     // Compare the values...
     let x = [0.3, 0.1, 0.2, 0.1, 0.4, 0.7];
@@ -113,14 +112,13 @@ fn one_d_grid_with_bounding_box()-> Result<(), SGError>
     let mut grid = LinearGrid::<1,1>::default();
     // build a sparse grid in 1D (this is identical to a full grid in 1D)
     grid.sparse_grid([5]);
-    *grid.bounding_box_mut() = Some(BoundingBox::new([0.0], [5.0]));
+    *grid.bounding_box_mut() = BoundingBox::new([0.0], [5.0]);
 
     // create our function for evaluating values on the grid
     let mut f = |x: &[f64; 1]|[x[0].powi(2)];
 
     // Calculate the values on our grid
-    let values = grid.points().iter().map(&f).collect();
-    grid.set_values(values)?;
+    grid.update_values(&mut f);
     // Compare the values...
     let x = [3.0];
     let mut error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();

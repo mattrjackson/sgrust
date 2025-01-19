@@ -1,4 +1,4 @@
-use crate::storage::linear_grid::{GridPoint, SparseGridStorage};
+use crate::storage::linear_grid::{GridPoint, SparseGridData};
 
 ///
 /// This trait defines operations used for refinement or coarsening. These
@@ -10,7 +10,7 @@ pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize> : Send + Sync
     ///
     /// Return criteria for determining refinement threshold
     /// 
-    fn eval(&self, storage: &SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], seq: usize) -> f64;
+    fn eval(&self, storage: &SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], seq: usize) -> f64;
 
     ///
     /// Return threshold for refinement or coarsening
@@ -40,35 +40,35 @@ pub trait SparseGridRefinement<const D: usize, const DIM_OUT: usize>
     ///
     /// Refine grid based on criteria computed using functor
     /// 
-    fn refine(&self, storage: &mut SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize>;
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize>;
 
     ///
     /// Returns the number of grid points that can be refined.
     ///      
-    fn get_num_refinable_points(&self, storage: &SparseGridStorage<D>) -> usize;
+    fn get_num_refinable_points(&self, storage: &SparseGridData<D>) -> usize;
 
     ///
     /// Refine a grid point along a single direction
     /// 
-    fn refine_1d(&self, storage: &mut SparseGridStorage<D>, point: GridPoint<D>, dim: usize);
+    fn refine_1d(&self, storage: &mut SparseGridData<D>, point: GridPoint<D>, dim: usize);
 
-    fn create_point(&self, storage: &mut SparseGridStorage<D>, mut point: GridPoint<D>)
+    fn create_point(&self, storage: &mut SparseGridData<D>, mut point: GridPoint<D>)
     {
         if !storage.contains(&point)
         {
-            point.is_leaf = false;
+            point.set_is_leaf(false);
             self.create_point(storage, point);
         }
         else if let Some(point) = storage.get_mut(&point)
         {
-            point.is_leaf = false;
+            point.set_is_leaf(false);
         }
     }
 }
 
-fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(storage: &SparseGridStorage<D>, operation: &mut Op)
+fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(storage: &SparseGridData<D>, operation: &mut Op)
 {
-    for (seq, point) in storage.iter().enumerate()
+    for (seq, point) in storage.nodes().iter().enumerate()
     {
         let parent = point;
         let mut point = *point;
@@ -123,7 +123,7 @@ pub struct BaseRefinement<const D: usize, const DIM_OUT: usize>(pub bool);
 
 impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
 {
-    fn create_point(&self, storage: &mut SparseGridStorage<D>, point: GridPoint<D>)
+    fn create_point(&self, storage: &mut SparseGridData<D>, point: GridPoint<D>)
     {
         for dim in 0..D
         {
@@ -144,7 +144,7 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
             self.create_gridpoint_level_zero_consistency(storage, point);
         }
     }
-    fn create_gridpoint_level_zero_consistency(&self, storage: &mut SparseGridStorage<D>, mut point: GridPoint<D>)
+    fn create_gridpoint_level_zero_consistency(&self, storage: &mut SparseGridData<D>, mut point: GridPoint<D>)
     {
         if D == 1 // only needed for D > 1
         {
@@ -163,19 +163,19 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
                     point.index[dim] = i;
                     if storage.contains(&point)
                     {
-                        let leaf_l = point.is_leaf;
+                        let leaf_l = point.is_leaf();
                         // check the boundary not being evaluated
                         point.index[dim] = if i == 0 { 1 } else { 0 };
                         if !storage.contains(&point)
                         {
-                            let leaf_r = point.is_leaf;
-                            point.is_leaf = leaf_l;
+                            let leaf_r = point.is_leaf();
+                            point.set_is_leaf(leaf_l);
                             self.create_point(storage, point);
-                            point.is_leaf = leaf_r;
+                            point.set_is_leaf(leaf_r);
                         }
                         else if let Some(point) = storage.get_mut(&point)
                         {
-                            point.is_leaf = leaf_l;   
+                            point.set_is_leaf(leaf_l);   
                         }
                     }
                 }               
@@ -184,20 +184,20 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
             }                        
         }
     }
-    fn create_gridpoint_internal(&self, storage: &mut SparseGridStorage<D>, mut point: GridPoint<D>)
+    fn create_gridpoint_internal(&self, storage: &mut SparseGridData<D>, mut point: GridPoint<D>)
     {
 
         if let Some(point) = storage.get_mut(&point)
         {
-            point.is_leaf = false;
+            point.set_is_leaf(false);
         }
         else
         {
-            point.is_leaf = false;
+            point.set_is_leaf(false);
             self.create_point(storage, point);
         }
     }
-    fn create_point_1d_with_boundary(&self, mut point: GridPoint<D>, storage: &mut SparseGridStorage<D>, dim: usize)
+    fn create_point_1d_with_boundary(&self, mut point: GridPoint<D>, storage: &mut SparseGridData<D>, dim: usize)
     {
         let level = point.level[dim];
         let index = point.index[dim];
@@ -226,7 +226,7 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
         }        
         self.create_point_1d(point, storage, dim);        
     }
-    fn create_point_1d(&self, mut point: GridPoint<D>, storage: &mut SparseGridStorage<D>, dim: usize)
+    fn create_point_1d(&self, mut point: GridPoint<D>, storage: &mut SparseGridData<D>, dim: usize)
     {
         let level = point.level[dim];
         let index = point.index[dim];
@@ -249,10 +249,10 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
         }
     }
 
-    fn refine_gridpoint(&self, storage: &mut SparseGridStorage<D>, index: usize) 
+    fn refine_gridpoint(&self, storage: &mut SparseGridData<D>, index: usize) 
     {
         let point = storage[index];
-        storage[index].is_leaf = false;
+        storage[index].set_is_leaf(false);
         for d in 0..D
         {
             self.refine_1d(storage, point, d);
@@ -262,7 +262,7 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
 
 impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for BaseRefinement<D, DIM_OUT>
 {
-    fn refine(&self, storage: &mut SparseGridStorage<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize> {
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize> {
         let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
         iterate_refinable_points(storage, &mut |(seq, _point)|
@@ -280,14 +280,14 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for 
         (original_number..storage.len()).collect()
     }
 
-    fn get_num_refinable_points(&self, storage: &SparseGridStorage<D>) -> usize
+    fn get_num_refinable_points(&self, storage: &SparseGridData<D>) -> usize
     {        
         let mut count = 0;
         iterate_refinable_points(storage, &mut |_point| { count += 1; });        
         count
     }
 
-    fn refine_1d(&self, storage: &mut SparseGridStorage<D>, mut point: GridPoint<D>, dim: usize) 
+    fn refine_1d(&self, storage: &mut SparseGridData<D>, mut point: GridPoint<D>, dim: usize) 
     {
         let index = point.index[dim];
         let level = point.level[dim];
@@ -297,7 +297,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for 
             point.index[dim] = 1;
             if !storage.contains(&point)
             {
-                point.is_leaf = true;
+                point.set_is_leaf(true);
                 self.create_point(storage, point);
             }
         }
@@ -307,14 +307,14 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for 
             point.index[dim] = 2 * index - 1;
             if !storage.contains(&point)
             {
-                point.is_leaf = true;
+                point.set_is_leaf(true);
                 self.create_point(storage, point);
             }
             point.level[dim] = level + 1;
             point.index[dim] = index * 2 + 1;
             if !storage.contains(&point)
             {
-                point.is_leaf = true;
+                point.set_is_leaf(true);
                 self.create_point(storage, point);
             }
         }

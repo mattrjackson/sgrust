@@ -1,10 +1,10 @@
-use crate::storage::linear_grid::{GridPoint, SparseGridStorage};
+use crate::storage::linear_grid::{GridPoint, SparseGridData};
 
 
 pub trait GridIteratorT<const D: usize>
 {
-    fn node(&self) -> &GridPoint<D>;
-    fn index(&self) -> usize;
+    fn point(&self) -> &GridPoint<D>;
+    fn index(&self) -> Option<usize>;
     fn reset_to_level_zero(&mut self) -> bool;
     fn reset_to_left_level_zero(&mut self, dim: usize) -> bool;
     fn reset_to_right_level_zero(&mut self, dim: usize) -> bool;
@@ -18,32 +18,27 @@ pub trait GridIteratorT<const D: usize>
 }
 
 
-pub(crate) struct GridIterator<'a, const D: usize>
+pub(crate) struct HashMapGridIterator<'a, const D: usize>
 {
-    pub(crate) storage: &'a SparseGridStorage<D>,
+    pub(crate) storage: &'a SparseGridData<D>,
     index: GridPoint<D>,
     seq: Option<usize>,
 }
 
-impl<'a, const D: usize> GridIterator<'a, D>
+impl<'a, const D: usize> HashMapGridIterator<'a, D>
 {
 
-    pub(crate) fn new(storage: &'a SparseGridStorage<D> ) -> Self
-    {
-        let index = GridPoint::default();
-        Self { storage, index, seq: storage.sequence_number(&index) }
+    pub(crate) fn new(storage: &'a SparseGridData<D> ) -> Self
+    {        
+        let point = GridPoint::default();
+        Self { storage, index: storage[0], seq: storage.index_of(&point) }
     }
     
-    #[inline(always)]
-    pub fn valid_seq(&self) -> bool
-    {
-        self.seq.is_some()
-    }
     pub(crate) fn set_index(&mut self, point: GridPoint<D>)
     {
         self.index = point;
         
-        self.seq = self.storage.sequence_number(&self.index);
+        self.seq = self.storage.index_of(&self.index);
     }
 
     
@@ -57,13 +52,13 @@ impl<'a, const D: usize> GridIterator<'a, D>
         }   
         self.index.index[dim] = i - 2;
         
-        self.seq = self.storage.sequence_number(&self.index);
+        self.seq = self.storage.index_of(&self.index);
     }
     pub(crate) fn step_right(&mut self, dim: usize)
     {
         let i = self.index.index[dim];
         self.index.index[dim] = i + 2;
-        self.seq = self.storage.sequence_number(&self.index);
+        self.seq = self.storage.index_of(&self.index);
     }
 
     #[allow(unused)]
@@ -144,49 +139,49 @@ impl<'a, const D: usize> GridIterator<'a, D>
     }
 }
 
-impl<const D: usize> GridIteratorT<D> for GridIterator<'_, D>
+impl<const D: usize> GridIteratorT<D> for HashMapGridIterator<'_, D>
 {
     #[inline(always)]
-    fn node(&self) -> &GridPoint<D>
+    fn point(&self) -> &GridPoint<D>
     {
         &self.index
     }
     
-    fn index(&self) -> usize
+    fn index(&self) ->  Option<usize>
     {
-        self.seq.unwrap()
+        self.seq
     }
 
     fn reset_to_level_zero(&mut self) -> bool
     {        
         self.index.index = [0; D];      
         self.index.level = [0; D];          
-        self.seq = self.storage.sequence_number(&self.index);
-        true
+        self.seq = self.storage.index_of(&self.index);
+        self.seq.is_some()
     }
     fn reset_to_left_level_zero(&mut self, dim: usize) -> bool
     {
         self.index.index[dim] = 0;
         self.index.level[dim] = 0;
         
-        self.seq = self.storage.sequence_number(&self.index);        
-        true
+        self.seq = self.storage.index_of(&self.index);        
+        self.seq.is_some()
     }
     fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
     {
         self.index.level[dim] = 0;
         self.index.index[dim] = 1;       
         
-        self.seq = self.storage.sequence_number(&self.index);  
-        true      
+        self.seq = self.storage.index_of(&self.index);  
+        self.seq.is_some()      
     } 
     fn reset_to_level_one(&mut self, dim: usize) -> bool
     {
         self.index.level[dim] = 1;
         self.index.index[dim] = 1;
         
-        self.seq = self.storage.sequence_number(&self.index);
-        true
+        self.seq = self.storage.index_of(&self.index);
+        self.seq.is_some()
     }
     fn left_child(&mut self, dim: usize) -> bool
     {
@@ -200,8 +195,8 @@ impl<const D: usize> GridIteratorT<D> for GridIterator<'_, D>
         self.index.level[dim] = l + 1;
         self.index.index[dim] = (2 * i) - 1;
         
-        self.seq = self.storage.sequence_number(&self.index);
-        true
+        self.seq = self.storage.index_of(&self.index);
+        self.seq.is_some()
     }
     fn right_child(&mut self, dim: usize) -> bool
     {
@@ -210,8 +205,8 @@ impl<const D: usize> GridIteratorT<D> for GridIterator<'_, D>
         self.index.level[dim] = l + 1;
         self.index.index[dim] = 2 * i + 1;
         
-        self.seq = self.storage.sequence_number(&self.index);
-        true
+        self.seq = self.storage.index_of(&self.index);
+        self.seq.is_some()
     }
     fn up(&mut self, dim: usize) -> bool
     {
@@ -227,8 +222,8 @@ impl<const D: usize> GridIteratorT<D> for GridIterator<'_, D>
         self.index.level[dim] = l - 1;
         self.index.index[dim] = i;
         
-        self.seq = self.storage.sequence_number(&self.index);
-        true
+        self.seq = self.storage.index_of(&self.index);
+        self.seq.is_some()
     }
 
     

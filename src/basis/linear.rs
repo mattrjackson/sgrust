@@ -130,16 +130,9 @@ impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize> IsotropicQuadra
     #[inline]
     fn eval(&self, storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {        
-        let volume = if let Some(bbox) = storage.bounding_box
-        {
-            T::from(bbox.volume()).unwrap()
-        }
-        else
-        {
-            T::from(1.0).unwrap()
-        };
+        let volume = T::from(storage.bounding_box.volume()).unwrap();
         let mut integral = [T::zero(); DIM_OUT];
-        for (i, point) in storage.iter().enumerate()
+        for (i, point) in storage.nodes().iter().enumerate()
         {
             let mut pow = T::from(2.0_f64.powf(-(point.level_sum() as f64))).unwrap();
             if !point.is_inner_point()

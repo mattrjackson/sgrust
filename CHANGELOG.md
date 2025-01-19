@@ -9,7 +9,15 @@
 ### Removed
 ### Fixed
 -->
+## [0.4.0] — 2025-01-18
 
+### Security
+### Added
+### Changed
+Significant cleanup of data structures following 0.3.x enhancements. This introduces breaking changes with 0.3.x and ealier. Adjacency data is now serialized by default. 
+### Deprecated
+### Removed
+### Fixed
 
 ## [0.3.3] — 2025-01-10
 
@@ -40,7 +48,7 @@ Fixed a bug in `update_values_parallel` that resulted in the newly computed valu
 ### Changed
 ### Deprecated
 ### Removed
-Removed asserts that are no longer needed (and were incorrect) in `GridIteratorWithCache`. 
+Removed asserts that are no longer needed (and were incorrect) in `AdjacencyGridIterator`. 
 ### Fixed
 
 ## [0.3.0] — 2024-12-25
@@ -48,7 +56,7 @@ Removed asserts that are no longer needed (and were incorrect) in `GridIteratorW
 ### Security
 ### Added
 ### Changed
-Reduced memory overhead of `GridIteratorWithCache` further. This is a breaking change for serializing/deserializing a `LinearGrid`. Overall this is within 2% of the performance of the original methodology rather required 68 bytes of overhead * number of points * number of dimensions vs 20 bytes of overhead * number of points * number of dimensions.
+Reduced memory overhead of `AdjacencyGridIterator` further. This is a breaking change for serializing/deserializing a `LinearGrid`. Overall this is within 2% of the performance of the original methodology rather required 68 bytes of overhead * number of points * number of dimensions vs 20 bytes of overhead * number of points * number of dimensions.
 ### Deprecated
 ### Removed
 ### Fixed
@@ -60,7 +68,7 @@ Reduced memory overhead of `GridIteratorWithCache` further. This is a breaking c
 1. Created new methods, `update_refined_values` and `refine_iteration` to provide an alternate interface to iteratively call the refinement function and update the values.  
 2. Created new methods `update_values` and `update_values_parallel` to provide an easier way to update the base grid values. 
 ### Changed
-Reduced memory overhead of `GridIteratorWithCache` by 2x. This also appears to improve performance by 10-20%. This is a breaking change for serializing/deserializing a `LinearGrid`.
+Reduced memory overhead of `AdjacencyGridIterator` by 2x. This also appears to improve performance by 10-20%. This is a breaking change for serializing/deserializing a `LinearGrid`.
 ### Deprecated
 ### Removed
 ### Fixed

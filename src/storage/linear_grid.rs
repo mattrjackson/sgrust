@@ -1,17 +1,45 @@
-use std::{collections::HashSet, hash::{Hash, Hasher}, ops::{Index, IndexMut}};
-use rustc_hash::FxHashMap;
+use std::{hash::{Hash, Hasher}, ops::{Index, IndexMut}};
+use rustc_hash::{FxHashMap, FxHasher};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use bitfield_struct::bitfield;
+use crate::iterators::grid_iterator::{GridIteratorT, HashMapGridIterator};
 
+use super::adjacency_data::{NodeAdjacency, NodeAdjacencyData};
+
+#[bitfield(u8, new=false)]
+#[derive(Serialize, Deserialize)]
+pub struct GridPointFlags
+{
+    pub is_leaf: bool,
+    pub is_inner: bool,
+    #[bits(6)]
+    pub _empty: u8
+}
+impl GridPointFlags
+{
+    pub fn new<const D: usize>(level: &[u8; D], is_leaf: bool) -> Self
+    {
+        let mut r = Self::default();        
+        r.set_is_leaf(is_leaf);
+        r.set_is_inner(!level.contains(&0));
+        r
+    }
+    /// update `is_inner` flag...
+    pub fn update_is_inner<const D: usize>(&mut self, level: &[u8; D]) 
+    {
+        self.set_is_inner(!level.contains(&0));
+    }
+}
 #[serde_as]
-#[derive(Copy, Clone, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct GridPoint<const D: usize>
 {
     #[serde_as(as = "[_; D]")]
     pub level: [u8; D],
     #[serde_as(as = "[_; D]")]
     pub index: [u32; D],
-    pub(crate) is_leaf: bool,
+    pub(crate) flags: GridPointFlags,
 }
 impl<const D: usize> Hash for GridPoint<D>
 {
@@ -23,7 +51,7 @@ impl<const D: usize> Hash for GridPoint<D>
 impl<const D: usize> Default for GridPoint<D> 
 {
     fn default() -> Self {
-        Self { level: [1; D], index: [1; D], is_leaf: false }
+        Self { level: [1; D], index: [1; D], flags: GridPointFlags(0) }
     }
 }
 impl<const D: usize> PartialOrd for GridPoint<D>
@@ -38,27 +66,46 @@ impl<const D:usize> Ord for GridPoint<D>{
     }
 }
 
+impl<const D: usize> PartialEq for GridPoint<D>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.level == other.level && self.index == other.index
+    }
+}
+impl<const D: usize> Eq for GridPoint<D>{}
+
 impl<const D: usize> GridPoint<D>
 {
     pub fn new (level: [u8; D], index: [u32; D], is_leaf: bool) -> Self
     {
-         Self { level, index, is_leaf}
+        let flags= GridPointFlags::new(&level, is_leaf);
+        Self { level, index, flags }
     }   
     pub fn is_leaf(&self) -> bool
     {
-        self.is_leaf
+        self.flags.is_leaf()
+    }
+    pub fn set_is_leaf(&mut self, is_leaf: bool)
+    {
+        self.flags.set_is_leaf(is_leaf);
+    }
+
+    pub fn set_is_inner(&mut self, is_inner: bool)
+    {        
+        self.flags.set_is_inner(is_inner);
     }
     /// 
     /// This is an inner point if no indices are zero...
     /// 
     pub fn is_inner_point(&self) -> bool
     {        
-        self.level_min() > 0
+        self.flags.is_inner()
     }   
     pub fn level_sum(&self) -> u8
     {
         self.level.iter().sum()
     }
+    #[inline]
     pub fn level_max(&self) -> u8
     {
         *self.level.iter().max().unwrap()
@@ -125,15 +172,23 @@ impl<const D: usize> GridPoint<D>
         coor
     }
 
+    pub const fn zero_index() -> Self
+    {
+        Self{ level: [0; D], index: [0; D], flags: GridPointFlags(0) }
+    }
+
 }
 
-
-impl<const D: usize> PartialEq for GridPoint<D>
+impl<const D: usize> From<GridPoint<D>> for u64
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.level == other.level && self.index == other.index
+    fn from(val: GridPoint<D>) -> Self {
+        let hasher = &mut FxHasher::default();
+        val.hash(hasher);
+        hasher.finish()
     }
 }
+
+
 #[serde_as]
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct BoundingBox<const D: usize>
@@ -212,124 +267,115 @@ impl<const D: usize> BoundingBox<D>
     }
 }
 
-///
-/// Storage for a linear grid. This differs from `SparseGridData` 
-/// in that it contains a map to allow retrieval the storage index
-/// for a given grid point.
-/// 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct SparseGridStorage<const D: usize>
-{
-    pub map: FxHashMap<GridPoint<D>, usize>,
-    pub data: SparseGridData<D>
-}
 
-impl<const D: usize> SparseGridStorage<D>
+
+impl<const D: usize> SparseGridData<D>
 {
-    pub fn new(data: SparseGridData<D>) -> Self
-    {
-        let map: FxHashMap<GridPoint<D>, usize> = FxHashMap::from_iter(data.iter().enumerate().map(|(i, item)|(*item, i)));
-        Self { data, map }
-    }
     #[inline(always)]
     pub fn len(&self) -> usize
     {
-        self.data.list.len()
+        self.nodes.len()
     }
-
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool
+    {
+        self.nodes.is_empty()
+    }
     #[inline(always)]
     pub fn has_boundary(&self) -> bool
     {
-        self.data.has_boundary
+        self.has_boundary
     }
 
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
     #[inline]
     pub fn contains(&self, point: &GridPoint<D>) -> bool
     {
-        self.map.contains_key(point)
+        let hasher = &mut FxHasher::default();
+        point.hash(hasher);
+        self.map.contains_key(&hasher.finish())
     }
     #[inline]
     pub fn get_mut(&mut self, point: &GridPoint<D>) -> Option<&mut GridPoint<D>>
     {
-        match self.map.get(point)
+        let hasher = &mut FxHasher::default();
+        point.hash(hasher);
+        match self.map.get(&hasher.finish())
         {
-            Some(&seq) => Some(&mut self.data.list[seq]),
+            Some(&seq) => Some(&mut self.nodes[seq]),
+            None => None
+        }
+    }
+
+    #[inline]
+    pub fn get(&mut self, point: &GridPoint<D>) -> Option<&GridPoint<D>>
+    {
+        let hasher = &mut FxHasher::default();
+        point.hash(hasher);
+        match self.map.get(&hasher.finish())
+        {
+            Some(&seq) => Some(&self.nodes[seq]),
             None => None
         }
     }
 
     #[inline(always)]
-    pub fn list(&self) -> &Vec<GridPoint<D>>
+    pub fn nodes(&self) -> &Vec<GridPoint<D>>
     {
-        &self.data.list
+        &self.nodes
     }
     
-    #[inline(always)]
-    pub fn list_mut(&mut self) -> &mut Vec<GridPoint<D>>
+    pub fn nodes_mut(&mut self) -> &mut Vec<GridPoint<D>>
     {
-        &mut self.data.list
+        &mut self.nodes
     }
-    pub fn store(&mut self, index: GridPoint<D>)
+    
+    #[inline]
+    pub fn bounding_box(&self) -> &BoundingBox<D>
     {
-        self.map.insert(index, self.data.list.len());
-        self.data.list.push(index);     
+        &self.bounding_box
     }
     #[inline]
-    pub fn bounding_box(&self) -> Option<BoundingBox<D>>
+    pub fn bounding_box_mut(&mut self) -> &mut BoundingBox<D>
     {
-        self.data.bounding_box
+        &mut self.bounding_box
     }
     #[inline]
-    pub fn bounding_box_mut(&mut self) -> &mut Option<BoundingBox<D>>
+    pub fn index_of(&self, point: &GridPoint<D>) -> Option<usize>
     {
-        &mut self.data.bounding_box
-    }
-    #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'_, GridPoint<D>>
-    {
-        self.data.list.iter()
-    }
-    #[inline]
-    pub fn sequence_number(&self, index: &GridPoint<D>) -> Option<usize>
-    {
-        self.map.get(index).copied()
+        let hasher = &mut FxHasher::default();
+        point.hash(hasher);
+        self.map.get(&hasher.finish()).copied()
     }
 
-    pub fn remove(&mut self, points: &HashSet<usize>)
+    pub fn remove(&mut self, points_to_keep: &indexmap::IndexSet<usize>)
     {
-        let mut new_list = Vec::with_capacity(self.len() - points.len());
-        for i in 0..self.len()
-        {
-            if points.contains(&i)
-            {
-                continue;
-            }
-            new_list.push(self.data.list[i]);
+        let mut new_list = Vec::with_capacity(points_to_keep.len());
+        for &i in points_to_keep.iter()
+        {            
+            new_list.push(self.nodes[i]);
         }
-        self.data.list = new_list;
-        self.map = FxHashMap::from_iter(self.data.list.iter().enumerate().map(|(i, item)|(*item, i)));
-        Self::update_leaves(&mut self.data.list, &self.map);
+        self.nodes = new_list;
+        // TODO: This doesn't work for some reason...
+        //self.map.retain(|_, v| points_to_keep.contains(v));     
+        self.generate_map();
+        self.update_leaves();
     }
 
-    fn update_leaves(list: &mut [GridPoint<D>], map: &FxHashMap<GridPoint<D>, usize>)
+    fn update_leaves(&mut self)
     {
         #[allow(clippy::needless_range_loop)]
-        for i in 0..list.len()
+        for i in 0..self.len()
         {
-            let point = &mut list[i];
+            let point = &mut self.nodes[i];
             let mut is_leaf = true;
-
+            
             for dim in 0..D
             {                
                 if point.level[dim] > 0
-                {                    
+                {   
                     // Check if this point has any children. If not it is a leaf.
-                    if map.contains_key(&point.left_child(dim)) ||
-                        map.contains_key(&point.right_child(dim)) 
+                    if self.map.contains_key(&point.left_child(dim).into()) ||
+                        self.map.contains_key(&point.right_child(dim).into()) 
                     {
                         is_leaf = false;
                         break; 
@@ -338,56 +384,58 @@ impl<const D: usize> SparseGridStorage<D>
                 else
                 {                    
                     // don't remove boundary nodes that are used by other nodes...
-                    if map.contains_key(&point.root(dim)) 
+                    if self.map.contains_key(&point.root(dim).into()) 
                     {
                         is_leaf = false;
+                        break;
                     }
                 }
             }                
-            point.is_leaf = is_leaf;            
+            point.flags.set_is_leaf(is_leaf);            
         }
+        println!("# of leaves={}", self.nodes.iter().filter(|&&x|x.is_leaf()).count());
+        println!("# of inner points={}", self.nodes.iter().filter(|&&x|x.is_inner_point()).count());
     }
 
     ///
     /// Inserts a point
     /// 
-    pub fn insert_point(&mut self, point: GridPoint<D>) -> usize
+    #[inline]
+    pub fn insert_point(&mut self, mut point: GridPoint<D>) -> usize
     {
-        self.data.list.push(point);
-        let value = self.data.list.len() - 1;
-        self.map.insert(point, value);
-        value
+        // make sure our is_inner flag is up-to-date...
+        point.flags.update_is_inner(&point.level);
+        self.nodes.push(point);        
+        self.map.insert(point.into(), self.len() - 1);
+        self.len() - 1
     }
 
-    pub fn update(&mut self, point: GridPoint<D>, index: usize)
+    #[inline]
+    pub fn update(&mut self, mut point: GridPoint<D>, index: usize)
     {
-        self.map.remove(&point);
-        self.map.insert(point, index);
-        self.data.list[index] = point;
+        // make sure our is_inner flag is up-to-date...
+        point.flags.update_is_inner(&point.level);
+        let key: u64 = point.into();
+        self.map.insert(key, index);
+        self.nodes[index] = point;
     }
-
-    pub fn points(&self) -> Vec<[f64; D]>
-    {
-        let mut list = Vec::new();
-        for index in &self.data.list
-        {
-            let mut point = index.unit_coordinate();
-            if let Some(bbox) = self.data.bounding_box
-            {
-                point = bbox.to_real_coordinate(&point);
-            }
-            list.push(point)
-        }
-        list
+    ///
+    /// Return the real coordinates for each node...
+    /// 
+    pub fn points(&self) -> PointIterator<'_, D> {
+        PointIterator::new(&self.nodes, self.bounding_box)
     }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SparseGridData<const D: usize>
 {
-    pub(crate) list: Vec<GridPoint<D>>,
-    pub(crate) bounding_box: Option<BoundingBox<D>>,
+    pub(crate) bounding_box: BoundingBox<D>,
+    pub(crate) nodes: Vec<GridPoint<D>>,
+    pub(crate) adjacency_data: NodeAdjacencyData,    
     pub(crate) has_boundary: bool,
+    #[serde(skip_serializing)]
+    pub(crate) map: FxHashMap<u64, usize>
 }
 
 impl<const D: usize> Index<usize> for SparseGridData<D>
@@ -395,71 +443,169 @@ impl<const D: usize> Index<usize> for SparseGridData<D>
     type Output = GridPoint<D>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.list[index]
+        &self.nodes[index]
     }
 }
 impl<const D: usize> IndexMut<usize> for SparseGridData<D>
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.list[index]
+        &mut self.nodes[index]
     }
 }
-
 
 impl<const D: usize> Default for SparseGridData<D>
 {
     fn default() -> Self {
-        Self { list: Default::default(), bounding_box: Default::default(), has_boundary: false }
+        Self { nodes: Default::default(), bounding_box: Default::default(), adjacency_data: NodeAdjacencyData::default(), has_boundary: false, map: FxHashMap::default() }
     }
 }
 
-impl<const D: usize,  Idx: std::slice::SliceIndex<[GridPoint<D>]>> Index<Idx> for SparseGridStorage<D> 
-{
-    type Output=Idx::Output;    
-    fn index(&self, index: Idx) -> &Self::Output 
-    {
-        &self.data.list[index]
-    }
-}
-impl<const D: usize, Idx: std::slice::SliceIndex<[GridPoint<D>]>> IndexMut<Idx> for SparseGridStorage<D>
-{
-    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
-        &mut self.data.list[index]
-    }
-}
 impl<const D: usize> SparseGridData<D>
 {
-    pub fn new() -> Self
+    pub fn generate_map(&mut self)
     {
-        Self { ..Default::default() }
+        
+        let mut map = FxHashMap::default();
+        for (i, node) in self.nodes.iter().enumerate()
+        {
+            let mut hasher = FxHasher::default();
+            node.hash(&mut hasher);            
+            map.insert(hasher.finish(), i);
+        }
+        self.map = map;
     }
-    
-    pub fn is_empty(&self) -> bool
-    {
-        self.list.is_empty()
-    }
-    pub fn len(&self) -> usize
-    {
-        self.list.len()
-    }   
 
-    pub fn iter(&self) -> std::slice::Iter<'_, GridPoint<D>>
+    pub fn generate_adjacency_data(&mut self)
     {
-        self.list.iter()
+        let mut array = vec![NodeAdjacency::default(); D*self.len()];
+        if self.map.len() != self.len()
+        {
+            self.generate_map();
+        }
+        for dim in 0..D
+        {
+            for i in 0..self.len()
+            {
+                self.generate_adjacency_data_for_index(&mut array, i, dim);     
+            }
+        }
+        self.adjacency_data.zero_index = self.index_of(&GridPoint::zero_index()).unwrap_or(usize::MAX);
+        self.adjacency_data.data = array;
+    }
+
+    fn generate_adjacency_data_for_index(&mut self, array:&mut [NodeAdjacency], seq: usize, dim: usize)
+    {
+
+        let mut iterator = HashMapGridIterator::new(self);
+        let offset =  dim * self.len();
+        let active_index = offset + seq;
+        if !array[active_index].is_complete()
+        {
+            let node_index= iterator.storage[seq]; 
+            iterator.set_index(node_index);
+            iterator.step_left(dim);
+            if let Some(left_index) = iterator.index()
+            {                
+                // assign left node            
+                array[active_index].set_left(left_index as i64 - seq as i64);
+                array[active_index].set_has_left(true);
+                // assign right node for left of current node...
+                array[offset + left_index].set_right(seq as i64 - left_index as i64);
+                array[offset + left_index].set_has_right(true);
+            }
+            iterator.set_index(node_index);
+            iterator.step_right(dim);     
+            if let Some(right_index) = iterator.index()
+            {
+                // assign right node
+                array[active_index].set_right(right_index as i64 - seq as i64);
+                array[active_index].set_has_right(true);
+                // assign left node for right of current node...
+                array[offset + right_index].set_left(seq as i64 - right_index as i64);
+                array[offset + right_index].set_has_left(true);
+            }        
+            iterator.set_index(node_index);
+            iterator.up(dim);       
+            if let Some(parent_index) = iterator.index()  // parent exists
+            {
+                // assign parent
+                array[active_index].set_up(parent_index as i64 - seq as i64);      
+                array[active_index].set_has_parent(true);
+            }
+            iterator.set_index(node_index);
+            // get left child
+            iterator.left_child(dim);
+            if let Some(lc_index) = iterator.index()
+            {
+                // assign left child
+                array[active_index].set_has_left_child(true);
+                array[active_index].set_down(lc_index as i64 - seq as i64);
+                array[active_index].set_has_child(true);
+            }
+            
+            iterator.set_index(node_index);
+            // get right child        
+            iterator.right_child(dim);
+            if let Some(rc_index) = iterator.index()
+            {
+                // assign right child
+                array[active_index].set_has_right_child(true);
+                // this potentially overwrites the down index if left child exists,
+                // but that's ok. We just need one of them, or to know neither exist.
+                array[active_index].set_down(rc_index as i64 - seq as i64);
+                array[active_index].set_has_child(true);
+            } 
+            iterator.reset_to_left_level_zero(dim);
+            // Handle left level zero
+            if let Some(lzero) = iterator.index() {             
+                // we know what the correct index is...
+                // first let's find the leftmost node linked in our data structure.
+                let mut left_index = seq as u32;
+                while array[offset + left_index as usize].has_left()
+                {
+                    left_index = (left_index as i64 + array[offset + left_index as usize].left()) as u32;
+                }
+                // If the leftmost node isn't the boundary, we need to update our data structure
+                // such that if it has boundaries, we set its left boundary neighbor.
+                if left_index != lzero as u32
+                {
+                    array[offset + left_index as usize].set_left(lzero as i64 - left_index as i64);
+                    array[offset + left_index as usize].set_has_left(true);
+                }
+            } 
+            iterator.reset_to_right_level_zero(dim);
+            if let Some(rzero) = iterator.index()
+            {
+                // first let's find the rightmost node linked in our data structure.
+                let mut right_index = seq as u32;
+                while array[offset + right_index as usize].has_right()
+                {
+                    right_index = (right_index as i64 + array[offset + right_index as usize].right()) as u32;
+                }
+                // If the rightmost node isn't the boundary, we need to update our data structure
+                // such that if it has boundaries, we set its right boundary neighbor.
+                if right_index != rzero as u32
+                {
+                    array[offset + right_index as usize].set_right(rzero as i64 - right_index as i64);
+                    array[offset + right_index as usize].set_has_right(true);
+                }
+            }       
+        }
     }
 }
 
 pub struct PointIterator<'a, const D: usize>
 {
-    iterator: &'a mut std::slice::Iter<'a, GridPoint<D>>,
-    bounding_box: Option<BoundingBox<D>>,
+    data: &'a Vec<GridPoint<D>>,
+    bounding_box: BoundingBox<D>,
+    index: usize
 }
 
 impl<'a, const D: usize>  PointIterator<'a, D>
 {
-    pub fn new( iterator: &'a mut std::slice::Iter<'a, GridPoint<D>>, bounding_box: Option<BoundingBox<D>>) -> Self
+    pub fn new( data: &'a Vec<GridPoint<D>>, bounding_box: BoundingBox<D>) -> Self
     {
-        Self { iterator, bounding_box }
+        Self { data, bounding_box, index: 0 }
     }
 }
 
@@ -469,13 +615,11 @@ impl<const D: usize> Iterator for PointIterator<'_, D>
 
     fn next(&mut self) -> Option<Self::Item> {
 
-        if let Some(index) = self.iterator.next()
+        if self.index < self.data.len()
         {
-            let mut point = index.unit_coordinate();
-            if let Some(bbox) = self.bounding_box
-            {
-                point = bbox.to_real_coordinate(&point);
-            }
+            let mut point = self.data[self.index].unit_coordinate();
+            point = self.bounding_box.to_real_coordinate(&point);
+            self.index += 1;
             Some(point)
         }
         else

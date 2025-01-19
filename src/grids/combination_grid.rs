@@ -1,5 +1,5 @@
 
-use crate::{basis::base::Basis, errors::SGError, iterators::{advanced_step_iterator::AdvancedStepIterator, step_iterator::GridType}, lagrange::{lagrange_coeffs, lagrange_weights}};
+use crate::{basis::base::Basis, errors::SGError, iterators::{advanced_step_iterator::AdvancedStepIterator, step_iterator::GridType}, algorithms::lagrange::{lagrange_coeffs, lagrange_weights}};
 use crate::basis::global::GlobalBasis;
 use kdtree::KdTree;
 use kdtree::distance::squared_euclidean;
@@ -386,7 +386,7 @@ impl CombinationSparseGrid
         };
         let indices: Vec<_> = if self.ndim == 1 { generation_parameters.level_limits.clone() } else { AdvancedStepIterator::new(&generation_parameters.level_limits, grid_type, 
             self.basis.clone(), generation_parameters.tensor_strategy,  generation_parameters.exactness_limit.unwrap_or(exactness_bound)).flatten().collect() };
-        let weights = crate::multi_index_manipulation::weight_modifiers(&indices, self.ndim);        
+        let weights = crate::utilities::multi_index_manipulation::weight_modifiers(&indices, self.ndim);        
         for (level_set, weight) in indices.chunks_exact(self.ndim).zip(weights)
         {
             // Skip if weight is zero or we have already added this set

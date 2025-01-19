@@ -1,11 +1,11 @@
 use num_traits::Float;
 
-use crate::{basis::base::Basis, iterators::{grid_iterator::GridIteratorT, grid_iterator_cache::GridIteratorWithCache}, storage::linear_grid::SparseGridData};
+use crate::{basis::base::Basis, iterators::grid_iterator::GridIteratorT, storage::linear_grid::SparseGridData};
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
-    dim: usize, value: T, iterator: &mut GridIteratorWithCache<D>, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
+pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign, Iterator: GridIteratorT<D>>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
+    dim: usize, value: T, iterator: &mut Iterator, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
 {
     if value.abs().to_f64().unwrap() < 1e-14
     {
@@ -14,7 +14,8 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
     let mut level = 0;
     loop
     {
-        let work_index = storage[iterator.index].index[dim];        
+        let node_index = iterator.index().unwrap();
+        let work_index = storage[node_index].index[dim];        
         if level > 0
         {
             let new_value = T::from(basis[dim].eval(level, work_index, x[dim])).unwrap();
@@ -23,7 +24,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
                 #[allow(clippy::needless_range_loop)]
                 for i in 0..DIM_OUT
                 {
-                    result[i] += alpha[iterator.index][i] * value * new_value;
+                    result[i] += alpha[node_index][i] * value * new_value;
                 }
             }
             else 
@@ -38,7 +39,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
             if iterator.reset_to_left_level_zero(dim)
             {
-                let seq_l = iterator.index;
+                let seq_l = iterator.index().unwrap();
                 let new_value_l = T::from(basis[dim].eval(0, 0, x[dim])).unwrap();
                 if dim == D - 1
                 {
@@ -56,7 +57,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_right_level_zero(dim)
             {
-                let seq_r = iterator.index;
+                let seq_r = iterator.index().unwrap();
                 let new_value_r = T::from(basis[dim].eval(0, 1, x[dim])).unwrap();
                 if dim == D - 1
                 {
