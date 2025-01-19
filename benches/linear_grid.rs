@@ -6,9 +6,9 @@ fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
     // Build the 2D grid object, only one value per node.
     let mut grid = LinearGrid::<6,1>::default();
     // using a full grid here, but a sparse grid could be used instead...
-    grid.full_grid_with_boundaries(3);
+    grid.sparse_grid_with_boundaries([7;6]);
 
-    let f = |x: &[f64; 6]|
+    let f = |x: [f64; 6]|
     {
         let mut r = [0.0];
         (0..6).for_each(|i| {
@@ -17,7 +17,7 @@ fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
         r
     };
 
-    let values = grid.points().iter().map(f).collect();
+    let values = grid.points().map(f).collect();
     grid.set_values(values)?;    
     
     Ok(grid)

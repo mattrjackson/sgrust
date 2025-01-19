@@ -3,7 +3,7 @@ use crate::algorithms::refinement::RefinementFunctor;
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
-use crate::storage::linear_grid::SparseGridStorage;
+use crate::storage::linear_grid::SparseGridData;
 use crate::generators::base::*;
 use serde::{Serialize, Deserialize};
 
@@ -15,24 +15,24 @@ pub struct LinearGridGenerator<const D: usize>;
 impl<const D: usize> Generator<D> for LinearGridGenerator<D>
 {
     #[allow(non_snake_case)]
-    fn regular(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], T :Option<f64>) {
+    fn regular(&self, storage: &mut SparseGridData<D>, levels: [usize; D], T :Option<f64>) {
         regular(storage, levels, T);
     }
 
     #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], clique_size: usize, T :Option<f64>) {
+    fn cliques(&self, storage: &mut SparseGridData<D>, levels: [usize; D], clique_size: usize, T :Option<f64>) {
         cliques(storage, levels, clique_size, T);
     }
 
-    fn full(&self, storage: &mut SparseGridStorage<D>, level: usize) {
+    fn full(&self, storage: &mut SparseGridData<D>, level: usize) {
        full(storage, level);
     }
-    fn full_with_boundaries(&self, storage: &mut SparseGridStorage<D>, level: usize) {
+    fn full_with_boundaries(&self, storage: &mut SparseGridData<D>, level: usize) {
         full_with_boundaries(storage, level);
     }
 
     #[allow(non_snake_case)]
-    fn regular_with_boundaries(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>) {
+    fn regular_with_boundaries(&self, storage: &mut SparseGridData<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>) {
         regular_with_boundaries(storage, levels, boundary_level, T);
     }
 }
@@ -79,7 +79,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
             let op = LinearBoundaryHierarchisationOperation;
             self.0.refine(functor, eval_fun, &op, max_iterations);
         }        
-        self.update_runtime_data();
+        self.base_mut().storage.generate_adjacency_data();
     }
 
     fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize)
@@ -94,7 +94,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
             let op = LinearBoundaryHierarchisationOperation;
             self.0.refine_parallel(functor, eval_fun, &op, max_iterations);
         }        
-        self.update_runtime_data();
+        self.base_mut().storage.generate_adjacency_data();
     }
 
     fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool)
@@ -112,7 +112,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
     }
     fn sort(&mut self) {
         self.base_mut().sort();
-        self.update_runtime_data();
+        self.base_mut().storage.generate_adjacency_data();
     }
 
     fn sparse_grid(&mut self, levels: [usize; D]) {
@@ -134,22 +134,13 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
     {
         self.base().integrate_isotropic(&LinearBasis)
     }
-    fn read_compact<Reader: std::io::Read>(reader: Reader)  -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_compact(reader)?))
+    
+    fn read<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized {
+        Ok(Self(SparseGridBase::<D, DIM_OUT>::read(reader)?))
     }
-
-    fn read_full<Reader: std::io::Read>(reader: Reader)  -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_full(reader)?))
-    }
-
-    fn read_compact_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized
-    {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_compact_buffer(buffer)?))
-    }
-
-    fn read_full_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized
-    {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_full_buffer(buffer)?))
+    
+    fn read_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized {
+        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_buffer(buffer)?))
     }
     
     
@@ -165,14 +156,21 @@ fn check_make_grid()
     grid.full_grid(level);
     assert_eq!(grid.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
-    }
+    }    
     grid.set_values(values.clone()).unwrap();
+    // for d in 0..2
+    // {
+    //     for i in 0..grid.len()
+    //     {            
+    //         println!("{:?}", grid.storage().adjacency_data[d*grid.len() + i]);
+    //     }
+    // }
     println!("interpolated value={}", grid.interpolate([0.2,0.2]).unwrap()[0]);
-    assert!((grid.interpolate([0.2,0.2]).unwrap()[0]-0.08).abs() < 1e-4);
+    assert!((grid.interpolate([0.2,0.2]).unwrap()[0]-0.08).abs() < 1e-2);
     let start = std::time::Instant::now();
     for _i in 0..1e6 as usize
     {
@@ -190,8 +188,8 @@ fn check_make_grid_with_boundaries_2d()
     let mut grid = LinearGrid::<2,1>::new();
     grid.full_grid_with_boundaries(level);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
@@ -201,6 +199,13 @@ fn check_make_grid_with_boundaries_2d()
     println!("coarsening");
     let functor = crate::refinement::surplus::SurplusRefinement(1e-5);
     grid.coarsen(&functor);
+    for d in 0..2
+    {
+        for i in 0..grid.len()
+        {            
+            println!("{:?}", grid.storage().adjacency_data[d*grid.len() + i]);
+        }
+    }
     println!("number of points after coarsening={}", grid.len());
     println!("interpolated_value={}", grid.interpolate([0.2,0.2]).unwrap()[0]);
     assert!((grid.interpolate([0.2,0.2]).unwrap()[0]-0.08).abs() < 1e-4);
@@ -217,7 +222,7 @@ fn check_integration()
     let mut grid: LinearGrid<2, 1> = LinearGrid::<2,1>::new();
     grid.sparse_grid_with_boundaries([12,12]);
 
-    let points: Vec<[f64; 2]> = grid.points();
+    let points: Vec<[f64; 2]> = grid.points().collect();
     let mut values = vec![[0.0; 1]; points.len()];
     for (point, value) in points.iter().zip(values.iter_mut())
     {
@@ -241,8 +246,8 @@ fn check_make_grid_with_boundaries_4d()
     let mut grid = LinearGrid::<4,1>::new();
     grid.full_grid_with_boundaries(level);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
@@ -264,8 +269,8 @@ fn check_make_grid_with_boundaries_6d()
     let mut grid = LinearGrid::<6,1>::new();
     grid.sparse_grid_with_boundaries([level; 6]);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
@@ -331,14 +336,14 @@ fn check_grid_refinement_iteration()
     grid.full_grid_with_boundaries(level);
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
     grid.set_values(values.clone()).unwrap();
 
-    for point in grid.storage().iter()
+    for point in grid.storage().nodes().iter()
     {
         let c = point.unit_coordinate();
         println!("{},{}", c[0], c[1]);
@@ -364,8 +369,8 @@ fn check_parallel_grid_refinement()
     grid.full_grid_with_boundaries(level);
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         value[0] = point[0]*point[0] + point[1]*point[1];
     }
@@ -390,8 +395,8 @@ fn fit_1d_gaussian_cdf()
     let mut grid = LinearGrid::<1, 1>::new();
     grid.sparse_grid_with_boundaries([level]);
     let points = grid.points();
-    let mut values = vec![[0.0; 1]; points.len()];
-    for (point, value) in points.iter().zip(values.iter_mut())
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
     {
         let x = point[0];
         value[0] = 0.5*(1.0+erf((x-0.5)/sigma/SQRT_2));

@@ -1,23 +1,27 @@
-use std::collections::HashSet;
+use indexmap::IndexSet;
 
-use crate::storage::linear_grid::SparseGridStorage;
+use crate::storage::linear_grid::SparseGridData;
 
 use super::refinement::RefinementFunctor;
 
-pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut SparseGridStorage<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> HashSet<usize>
+pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> IndexSet<usize>
 {
-    let mut removed_points = HashSet::new();
-    for (seq, point) in storage.iter().enumerate()
+    let mut kept_points = IndexSet::default();
+    for (seq, point) in storage.nodes().iter().enumerate()
     {
         if point.is_leaf()
         {
             let r = functor.eval(storage, alpha, values, seq);
-            if r < functor.threshold()
+            if r >= functor.threshold()
             {
-                removed_points.insert(seq);
+                kept_points.insert(seq);
             }
         }
+        else
+        {
+            kept_points.insert(seq);
+        }
     }
-    storage.remove(&removed_points);
-    removed_points
+    storage.remove(&kept_points);
+    kept_points
 }

@@ -1,4 +1,4 @@
-use crate::storage::linear_grid::{GridPoint, SparseGridStorage};
+use crate::storage::linear_grid::{GridPoint, SparseGridData};
 
 pub trait Generator<const D: usize> : Default
 {
@@ -8,7 +8,7 @@ pub trait Generator<const D: usize> : Default
     /// Tensor-Product Approximation Spaces".
     /// 
     #[allow(non_snake_case)]
-    fn regular(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], T :Option<f64>);
+    fn regular(&self, storage: &mut SparseGridData<D>, levels: [usize; D], T :Option<f64>);
     ///
     /// Generates a regular sparse grid of level levels, without boundaries
     /// where dimensions are splitted into a groups with only certain number
@@ -17,22 +17,22 @@ pub trait Generator<const D: usize> : Default
     /// Tensor-Product Approximation Spaces".
     /// 
     #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], clique_size: usize, T :Option<f64>);
+    fn cliques(&self, storage: &mut SparseGridData<D>, levels: [usize; D], clique_size: usize, T :Option<f64>);
     ///
     /// Generates a full grid of 2^@level tensors, without boundaries
     /// 
-    fn full(&self, storage: &mut SparseGridStorage<D>, level: usize);
+    fn full(&self, storage: &mut SparseGridData<D>, level: usize);
 
     ///
     /// Generates a full grid of level @level, with boundary grid points.
     /// 
-    fn full_with_boundaries(&self, storage: &mut SparseGridStorage<D>, level: usize);
+    fn full_with_boundaries(&self, storage: &mut SparseGridData<D>, level: usize);
 
     /// Generates a regular sparse grid of level levels, with boundaries.
     /// For details about T, See pages 8-9 of Griebel and Knapek's "Optimized 
     /// Tensor-Product Approximation Spaces".
     #[allow(non_snake_case)]
-    fn regular_with_boundaries(&self, storage: &mut SparseGridStorage<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>);
+    fn regular_with_boundaries(&self, storage: &mut SparseGridData<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>);
 
 }
 
@@ -40,7 +40,7 @@ pub trait Generator<const D: usize> : Default
 /// Generate a regular sparse grid iteratively without grid points on the boundary.
 /// 
 #[allow(non_snake_case)]
-fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usize; D], T :Option<f64>)
+fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridData<D>, levels: [usize; D], T :Option<f64>)
 {
     let mut point = GridPoint::new([1; D], [1;D], false);
     let t = T.unwrap_or(0.0); // default to zero (sparse grid)
@@ -52,7 +52,7 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D
             let is_leaf = l == n;            
             point.level[0] = l as u8;
             point.index[0] = i;
-            point.is_leaf = is_leaf;
+            point.set_is_leaf(is_leaf);
             storage.insert_point(point);
         }
     }
@@ -77,9 +77,9 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D
                 for i in (1..(1 << l)).step_by(2)
                 {
                     let is_leaf = (l + level_sum) as u32 == n + D as u32 - 1;
-                    point.level[d] = l as u8;
+                    point.level[d] = l;
                     point.index[d] = i;
-                    point.is_leaf = is_leaf;
+                    point.set_is_leaf(is_leaf);
                     if !first
                     {
                       storage.insert_point(point);                      
@@ -97,13 +97,13 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridStorage<D
 }
 
 #[allow(non_snake_case)]
-pub fn regular<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usize; D], T :Option<f64>) 
+pub fn regular<const D: usize>(storage: &mut SparseGridData<D>, levels: [usize; D], T :Option<f64>) 
 {
     regular_generator_iterative(storage, levels, T)
 }
 
 #[allow(non_snake_case)]
-pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usize; D], clique_size: usize, T: Option<f64>) {
+pub fn cliques<const D: usize>(storage: &mut SparseGridData<D>, levels: [usize; D], clique_size: usize, T: Option<f64>) {
     let mut point = GridPoint::new([1; D], [1;D], false);
     let t = T.unwrap_or(0.0); // default to zero (sparse grid)
     let n = levels[0] as u32;
@@ -114,7 +114,7 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usiz
             let is_leaf = l == n;            
             point.level[0] = l as u8;
             point.index[0] = i;
-            point.is_leaf = is_leaf;
+            point.set_is_leaf(is_leaf);
             storage.insert_point(point);
         }
     }
@@ -158,7 +158,7 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usiz
                     let is_leaf = (l + level_sum) as u32 == n + D as u32 - 1;
                     point.level[d] = l as u8;
                     point.index[d] = i;
-                    point.is_leaf = is_leaf;
+                    point.set_is_leaf(is_leaf);
                     if !first
                     {
                       storage.insert_point(point);                      
@@ -175,7 +175,7 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usiz
     }
 }
 
-fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usize)
+fn full_iterative<const D: usize>(storage: &mut SparseGridData<D>, level: usize)
 {
     let mut point = GridPoint::new([1; D], [1;D], false);   
     let n = level as u32;
@@ -186,7 +186,7 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usi
             let is_leaf = l == n;            
             point.level[0] = l as u8;
             point.index[0] = i;
-            point.is_leaf = is_leaf;
+            point.set_is_leaf(is_leaf);
             storage.insert_point(point);
         }
     }
@@ -207,7 +207,7 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usi
                     let is_leaf = point.level_sum() as u32 == n as u32 * D as u32;
                     point.level[d] = l as u8;
                     point.index[d] = i;
-                    point.is_leaf = is_leaf;
+                    point.set_is_leaf(is_leaf);
                     if !first
                     {
                       storage.insert_point(point);                      
@@ -223,24 +223,26 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridStorage<D>, level: usi
     }
 }
 
-pub fn full<const D: usize>(storage: &mut SparseGridStorage<D>, level: usize) {
+pub fn full<const D: usize>(storage: &mut SparseGridData<D>, level: usize) {
     full_iterative(storage, level);
 }
 
-pub fn anisotropic_full<const D: usize>(_storage: &mut SparseGridStorage<D>, _level: &[usize; D]) {
+pub fn anisotropic_full<const D: usize>(_storage: &mut SparseGridData<D>, _level: &[usize; D]) {
     todo!()
 }
 
-pub fn full_with_boundaries<const D: usize>(storage: &mut SparseGridStorage<D>, level: usize) {
+pub fn full_with_boundaries<const D: usize>(storage: &mut SparseGridData<D>, level: usize) {
     full_with_boundaries_iter(storage, level);
+    storage.has_boundary = true;
 }
 
 #[allow(non_snake_case)]
-pub fn regular_with_boundaries<const D: usize>(storage: &mut SparseGridStorage<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>) {
+pub fn regular_with_boundaries<const D: usize>(storage: &mut SparseGridData<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>) {
     let boundary_level = boundary_level.unwrap_or(1);
     if boundary_level > 0
     {
         regular_with_boundaries_iter(storage, levels, Some(boundary_level), T);
+        storage.has_boundary = true;
     }   
     else
     {
@@ -249,7 +251,7 @@ pub fn regular_with_boundaries<const D: usize>(storage: &mut SparseGridStorage<D
 }
 
 #[allow(non_snake_case)]
-fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>)
+fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridData<D>, levels: [usize; D], boundary_level: Option<usize>, T :Option<f64>)
 {
     let boundary_level = boundary_level.unwrap_or(1) as u32;
     let mut point = GridPoint::new([1; D], [1;D], false);
@@ -269,7 +271,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
             let is_leaf = l == n;            
             point.level[0] = l as u8;
             point.index[0] = i;
-            point.is_leaf = is_leaf;
+            point.set_is_leaf(is_leaf);
             storage.insert_point(point);
         }
     }
@@ -306,7 +308,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
             {
                 point.level[d as usize] = 0;
                 point.index[d as usize] = 0;
-                point.is_leaf = false;
+                point.set_is_leaf(false);
                 storage.update(point, g);
                 point.index[d as usize] = 1;
                 storage.insert_point(point);
@@ -346,7 +348,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
                     let is_leaf = if l as u32 +level_sum as u32 == n as u32 + D as u32 - 1 { num_zero_levels == 0 } else { false};
                     point.level[d] = l;
                     point.index[d] = i;
-                    point.is_leaf = is_leaf;
+                    point.set_is_leaf(is_leaf);
                     if !first_point
                     {
                       storage.insert_point(point);                      
@@ -363,7 +365,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D
     }
 }
 
-fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, level: usize)
+fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridData<D>, level: usize)
 {
     let mut point = GridPoint::new([1; D], [1;D], false);
     let n = level as u32;
@@ -380,7 +382,7 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
         {
             point.level[0] = 0;
             point.index[0] = 0;
-            point.is_leaf = false;
+            point.set_is_leaf(false);
             storage.insert_point(point);
 
             point.index[0] = 1;
@@ -391,7 +393,7 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
             let is_leaf = l == n;            
             point.level[0] = l as u8;
             point.index[0] = i;
-            point.is_leaf = is_leaf;
+            point.set_is_leaf(is_leaf);
             storage.insert_point(point);
         }
     }
@@ -414,7 +416,7 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
                     // handle level 1
                     point.level[d as usize] = 0;
                     point.index[d as usize] = 0;
-                    point.is_leaf = false;
+                    point.set_is_leaf(false);
                     storage.update(point, g);
                     point.index[d as usize] = 1;
                     storage.insert_point(point);
@@ -423,7 +425,7 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
                 for i in (1..(1 <<l)).step_by(2)
                 {
                     point.index[d as usize] = i;
-                    point.is_leaf = point.level_sum() as u32 == n as u32* D as u32;
+                    point.set_is_leaf(point.level_sum() as u32 == n * D as u32);
                     storage.insert_point(point);
                 }
             }   
@@ -434,24 +436,24 @@ fn full_with_boundaries_iter<const D:usize>(storage: &mut SparseGridStorage<D>, 
 #[test]
 fn test_regular()
 {
-    let mut storage = SparseGridStorage::<2>::default();   
+    let mut storage = SparseGridData::<2>::default();   
     regular(&mut storage, [3,3], Some(0.0));
     assert_eq!(storage.len(), 17);
 }
 #[test]
 fn test_truncated_boundaries_1d()
 {
-    let mut storage = SparseGridStorage::<1>::default();
+    let mut storage = SparseGridData::<1>::default();
     regular_with_boundaries(&mut storage, [2], Some(1), None);
     assert_eq!(storage.len(), 5);
 }
 #[test]
 fn test_truncated_boundaries_2d()
 {
-    let mut storage = SparseGridStorage::<2>::default();
+    let mut storage = SparseGridData::<2>::default();
     regular_with_boundaries(&mut storage, [2,2], Some(1), None);
     assert_eq!(storage.len(), 21);
-    let mut storage2 = SparseGridStorage::<2>::default();
+    let mut storage2 = SparseGridData::<2>::default();
     regular_with_boundaries(&mut storage2, [3,3], Some(1), None);
     assert_eq!(storage2.len(), 49);   
     assert!(storage2.contains(&GridPoint::new([1,1], [1,1], false)));

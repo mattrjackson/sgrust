@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelBridge, ParallelIterator};
 use serde_with::serde_as;
 use crate::algorithms::basis_evaluation::BasisEvaluation;
 use crate::algorithms::integration::{AnisotropicQuadrature, IsotropicQuadrature};
@@ -8,9 +8,8 @@ use crate::algorithms::refinement::{BaseRefinement, RefinementFunctor, SparseGri
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::hierarchisation::HierarchisationOperation;
-use crate::iterators::grid_iterator_cache::{GridIteratorData, GridIteratorWithCache};
-use crate::storage::linear_grid::{BoundingBox, GridPoint, SparseGridData};
-use crate::storage::linear_grid::SparseGridStorage;
+use crate::iterators::grid_iterator_cache::AdjacencyGridIterator;
+use crate::storage::linear_grid::{BoundingBox, GridPoint, PointIterator, SparseGridData};
 use crate::generators::base::*;
 use crate::algorithms;
 use serde::{Serialize,Deserialize};
@@ -39,13 +38,13 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     }
 
     /// Get the bounding box for this grid.
-    fn bounding_box(&self) -> Option<BoundingBox<D>>
+    fn bounding_box(&self) -> &BoundingBox<D>
     {
         self.base().bounding_box()
     }
 
     /// Get the bounding box for this grid (mutable).
-    fn bounding_box_mut(&mut self) -> &mut Option<BoundingBox<D>>
+    fn bounding_box_mut(&mut self) -> &mut BoundingBox<D>
     {
         self.base_mut().bounding_box_mut()
     }
@@ -112,20 +111,14 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     /// Compute integral over grid.
     fn integrate(&self) -> [f64; DIM_OUT];
 
-    /// Generate the runtime data that is required for interpolation.
-    fn update_runtime_data(&mut self)
-    {
-        self.base_mut().update_runtime_data();
-    }
-
-    /// Retrieve the underlying storage data.
-    fn storage(&self) -> &SparseGridStorage<D>
+    /// Retrieve the underlying storage 
+    fn storage(&self) -> &SparseGridData<D>
     {
         &self.base().storage
     }
 
     /// Get copy of points that make up this grid.
-    fn points(&self) -> Vec<[f64; D]>
+    fn points(&self) -> PointIterator<D>
     {
         self.base().points()
     }
@@ -141,7 +134,7 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     {
         self.base_mut().set_values(values)?;
         self.hierarchize();
-        self.update_runtime_data();
+        self.base_mut().storage.generate_adjacency_data();
         Ok(())
     }
 
@@ -154,22 +147,18 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
             values.push(eval_fun(&point));
         }
         self.set_values(values).expect("Failed to set values");
-        self.hierarchize();
-        self.update_runtime_data();
     }
 
     /// Set values by using evaluation function in parallel...
     fn update_values_parallel<EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, eval_fun: &EF)
     {
         let mut values = vec![[0.0; DIM_OUT]; self.len()];
-        self.points().par_iter().zip(values.par_iter_mut()).for_each(
+        self.points().zip(values.iter_mut()).par_bridge().for_each(
         |(point, value)|
         {
-            *value = eval_fun(point);
+            *value = eval_fun(&point);
         });        
         self.set_values(values).expect("Failed to set values");
-        self.hierarchize();
-        self.update_runtime_data();
     }
 
     /// Coarsen grid based on functor `F`
@@ -203,17 +192,11 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     /// 
     fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool);
 
-
-    /// Save compact form of data (no runtime iterator data is stored)
-    fn save_compact(&self, path: &str) -> Result<(), SGError>
-    {
-        self.base().save_compact(path)
-    }
     
-    /// Save full form of data (runtime iterator data is stored)
-    fn save_full(&mut self, path: &str) -> Result<(), SGError>
+    /// Save data to path
+    fn save(&mut self, path: &str) -> Result<(), SGError>
     {
-        self.base_mut().save_full(path)
+        self.base_mut().save(path)
     }
 
     /// Sort points... 
@@ -221,53 +204,31 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     {
         self.base_mut().sort();
     }
-    /// Read compact form of data.
-    fn read_compact<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized;
+    /// Read data
+    fn read<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized;    
 
-    /// Read full form of data.
-    fn read_full<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized;    
-
-    /// Read compact form of data from a buffer.
-    fn read_compact_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized;
-
-    /// Read full form of data from a buffer.
-    fn read_full_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized;
+    /// Read data from a buffer.
+    fn read_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized;
 
 }
 
-#[serde_as]
-#[derive(Serialize, Deserialize)]
-pub struct SparseGridDataAndValues<const D: usize, const DIM_OUT: usize>
-{
-    data: SparseGridData<D>,
-    #[serde_as(as = "Vec<[_; DIM_OUT]>")]
-    alpha: Vec<[f64; DIM_OUT]>,
-    #[serde_as(as = "Vec<[_; DIM_OUT]>")]
-    values: Vec<[f64; DIM_OUT]>,
-}
 #[serde_as]
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct SparseGridBase<const D: usize, const DIM_OUT: usize>
 {
-    pub(crate) storage: SparseGridStorage<D>,
-    pub(crate) iterator_data: Option<GridIteratorData<D>>,
+    pub(crate) storage: SparseGridData<D>,
     #[serde_as(as = "Vec<[_; DIM_OUT]>")]
     pub(crate) alpha: Vec<[f64; DIM_OUT]>,
     #[serde_as(as = "Vec<[_; DIM_OUT]>")]
     pub(crate) values: Vec<[f64; DIM_OUT]>,    
 }
-impl<const D: usize, const DIM_OUT: usize> From<SparseGridDataAndValues<D, DIM_OUT>> for SparseGridBase<D, DIM_OUT>
-{
-    fn from(value: SparseGridDataAndValues<D, DIM_OUT>) -> Self 
-    {
-        Self { storage: SparseGridStorage::new(value.data), iterator_data: None, alpha: value.alpha, values: value.values }
-    }
-}
+
+
 impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
 {
     pub fn new() -> Self
     {
-        SparseGridDataAndValues { data: SparseGridData::new(), alpha: Vec::new(), values: Vec::new() }.into()
+        SparseGridBase { storage: SparseGridData::default(), alpha: Vec::new(), values: Vec::new() }
     }
 
     pub fn alpha(&self) -> &[[f64; DIM_OUT]]
@@ -280,24 +241,24 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         &mut self.alpha
     }
 
-    pub fn bounding_box(&self) -> Option<BoundingBox<D>>
+    pub fn bounding_box(&self) -> &BoundingBox<D>
     {        
-        self.storage.data.bounding_box
+        self.storage.bounding_box()
     }
 
-    pub fn bounding_box_mut(&mut self) -> &mut Option<BoundingBox<D>>
+    pub fn bounding_box_mut(&mut self) -> &mut BoundingBox<D>
     {        
-        &mut self.storage.data.bounding_box
+        self.storage.bounding_box_mut()
     }
 
     pub fn is_empty(&self) -> bool
     {
-        self.storage.data.is_empty()
+        self.storage.is_empty()
     }
 
     pub fn len(&self) -> usize
     {
-        self.storage.data.len()
+        self.storage.len()
     }
 
     pub fn has_boundary(&self) -> bool
@@ -320,14 +281,14 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn sparse_grid_with_boundaries<GENERATOR: Generator<D>>(&mut self, levels: [usize; D], generator: &GENERATOR)
     {
         generator.regular_with_boundaries(&mut self.storage, levels, Some(1), None);
-        self.storage.data.has_boundary = true;
+        self.storage.has_boundary = true;
         self.sort();
     }    
 
     pub fn full_grid_with_boundaries<GENERATOR: Generator<D>>(&mut self, level: usize, generator: &GENERATOR)
     {
         generator.full_with_boundaries(&mut self.storage, level);
-        self.storage.data.has_boundary = true;
+        self.storage.has_boundary = true;
         self.sort();
     }
     pub fn hierarchize<OP: HierarchisationOperation<D, DIM_OUT>>(&mut self, op: &OP)
@@ -342,8 +303,13 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         indices
     }
     pub(crate) fn sort(&mut self)
-    {
-        let mut indices = Self::argsort(self.storage.list());        
+    {   
+        let mut indices = Self::argsort(self.storage.nodes());        
+        let mut indices_rev = indices.clone();
+        for i in 0..indices.len()
+        {
+            indices_rev[indices[i]] = i;
+        }
         for i in 0..indices.len()
         {
             let mut current = i;
@@ -357,47 +323,37 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
                 {
                     self.values.swap(current, next);
                 }
-                self.storage.list_mut().swap(current, next);
+                self.storage.nodes_mut().swap(current, next);
                 
                 indices[current] = current;                
                 current = next;                
             }
             indices[current] = current;
         }
-        for (i, item) in self.storage.data.list.iter().enumerate()
+        for value in self.storage.map.values_mut()
         {            
-            *self.storage.map.get_mut(item).unwrap() = i;
+            *value = indices_rev[*value];
         }
     }
 
-    pub fn update_runtime_data(&mut self)
-    {
-        self.iterator_data = Some(GridIteratorData::new(&self.storage));
-    }
     #[inline]
     pub fn interpolate(&self, x: [f64; D]) -> Result<[f64; DIM_OUT], SGError>
-    {
-        if let Some(bbox) = self.bounding_box()
+    {    
+        if !self.bounding_box().contains(&x)
         {
-            if !bbox.contains(&x)
-            {
-                return Err(SGError::OutOfDomain);
-            }
+            Err(SGError::OutOfDomain)
         }
-        else if !BoundingBox::default().contains(&x)
+        else 
         {
-            return Err(SGError::OutOfDomain);
+            self.interpolate_unchecked(x)    
         }
-        self.interpolate_unchecked(x)
-       
     }
     #[inline]
     pub fn interpolate_unchecked(&self, x: [f64; D]) -> Result<[f64; DIM_OUT], SGError>
     {
         use crate::algorithms::interpolation::InterpolationOperation;
-        let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-        let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
-        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));      
+        let iterator = &mut AdjacencyGridIterator::new(&self.storage);
+        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));      
         op.interpolate(x, &self.alpha, iterator)       
     }
 
@@ -409,28 +365,16 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         x.par_iter().zip(results.par_iter_mut()).for_each(
             |(x, y)|
             {
-                let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-                let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
-                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));
-                if let Some(bbox) = self.bounding_box()
-                {
-                    if !bbox.contains(x)
-                    {
-                        *y = Err(SGError::OutOfDomain);
-                    }
-                    else
-                    {
-                        *y = op.interpolate(*x, &self.alpha, iterator);
-                    }
-                }
-                else if !BoundingBox::default().contains(x)
+                let iterator = &mut AdjacencyGridIterator::new(&self.storage);
+                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));
+                if !self.bounding_box().contains(x)
                 {
                     *y = Err(SGError::OutOfDomain);
                 }
                 else
                 {
                     *y = op.interpolate(*x, &self.alpha, iterator);
-                }
+                }               
             }
         );       
        results
@@ -445,9 +389,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         x.par_iter().zip(results.par_iter_mut()).for_each(
             |(x, y)|
             {
-                let data = self.iterator_data.as_ref().expect("Grid Iterator data must be computed before calling interpolate!");
-                let iterator = &mut GridIteratorWithCache::new(data, &self.storage.data);
-                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage.data, [LinearBasis; D]));                
+                let iterator = &mut AdjacencyGridIterator::new(&self.storage);
+                let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));                
                 *y = op.interpolate(*x, &self.alpha, iterator);
             }
         );       
@@ -456,29 +399,26 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
 
     pub fn integrate_isotropic<QUADRATURE: IsotropicQuadrature<f64, D, DIM_OUT>>(&self, op: &QUADRATURE) -> [f64; DIM_OUT]
     {
-        op.eval(&self.storage().data, &self.alpha)
+        op.eval(self.storage(), &self.alpha)
     }
 
     pub fn eval_anisotropic_quadrature<QUADRATURE: AnisotropicQuadrature<D, DIM_OUT> + ?Sized>(&self, op: &QUADRATURE, index: usize, dim: usize) -> [f64; DIM_OUT]
     {
-        op.eval(&self.storage().data, index, dim)
+        op.eval(self.storage(), index, dim)
     }
 
     pub fn to_real_coordinate(&self, index: &GridPoint<D>) -> [f64; D]
     {
         let mut point = index.unit_coordinate();
-        if let Some(bbox) = self.storage.bounding_box()
-        {
-            point = bbox.to_real_coordinate(&point);
-        }
+        point = self.storage.bounding_box().to_real_coordinate(&point);
         point
     }
-    pub fn storage(&self) -> &SparseGridStorage<D>
+    pub fn storage(&self) -> &SparseGridData<D>
     {
         &self.storage
     }
 
-    pub fn points(&self) -> Vec<[f64; D]>
+    pub fn points(&self) -> PointIterator<'_, D>
     {
         self.storage.points()        
     }
@@ -490,7 +430,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
 
     pub fn set_values(&mut self, values: Vec<[f64; DIM_OUT]>) -> Result<(), SGError>
     {
-        if values.len() != self.points().len()
+        if values.len() != self.len()
         {
             Err(SGError::NumberOfPointsAndValuesMismatch)
         }
@@ -506,28 +446,26 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         loop
         {
             let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values);
-            if r.is_empty()
+            if r.len() == self.alpha.len()
             {
                 break;
             }
-            let mut new_alpha = Vec::with_capacity(self.alpha.len() - r.len());
-            let mut new_values = Vec::with_capacity(self.alpha.len() - r.len());
-            for i in 0..self.alpha.len()
+            let mut new_alpha = Vec::with_capacity(r.len());
+            let mut new_values = Vec::with_capacity(r.len());
+            for i in r
             {
-                if !r.contains(&i)
-                {
-                    new_alpha.push(self.alpha[i]);
-                    new_values.push(self.values[i]);
-                }
+                new_alpha.push(self.alpha[i]);
+                new_values.push(self.values[i]);                
             }
+            total_num_removed += self.alpha.len() - new_alpha.len(); 
             self.alpha = new_alpha;
             self.values = new_values;
-            total_num_removed += r.len();     
+                
         }
-       // self.hierarchize();
         if update_iterator_data
         {
-            self.update_runtime_data();
+            self.storage.generate_map();
+            self.storage.generate_adjacency_data();
         }        
         total_num_removed
         
@@ -541,11 +479,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         let mut points = Vec::with_capacity(indices.len());
         for &i in &indices
         {
-            let mut point = self.storage.list()[i].unit_coordinate();
-            if let Some(bbox) = self.storage.bounding_box()
-            {
-                point = bbox.to_real_coordinate(&point);
-            }
+            let mut point = self.storage[i].unit_coordinate();
+            point = self.storage.bounding_box().to_real_coordinate(&point);            
             points.push(point);
         }           
         points
@@ -564,11 +499,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             self.values.reserve(indices.len());            
             for &i in &indices
             {
-                let mut point = self.storage.list()[i].unit_coordinate();
-                if let Some(bbox) = self.storage.bounding_box()
-                {
-                    point = bbox.to_real_coordinate(&point);
-                }
+                let mut point = self.storage[i].unit_coordinate();
+                point = self.storage.bounding_box().to_real_coordinate(&point);
                 self.values.push(eval_fun(&point));
             }            
             self.hierarchize(op);
@@ -598,11 +530,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             indices.par_iter().zip(temp_values.par_iter_mut()).for_each(
             |(&index, value)|
             {
-                let mut point = self.storage.list()[index].unit_coordinate();
-                if let Some(bbox) = self.storage.bounding_box()
-                {
-                    point = bbox.to_real_coordinate(&point);
-                }
+                let mut point = self.storage[index].unit_coordinate();
+                point = self.storage.bounding_box().to_real_coordinate(&point);
                 *value = eval_fun(&point);
             }
             );        
@@ -617,55 +546,25 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         self.sort();        
     }
 
-    ///
-    /// Save compact form of data. This requires
-    /// regenerating iterator data, which can take seconds when grid
-    /// is initially read.
-    /// 
-    pub fn save_compact(&self, path: &str) -> Result<(), SGError>
-    {
-        let file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let storage = SparseGridDataAndValues{alpha: self.alpha.clone(), data: self.storage.data.clone(), values: self.values.clone()};
-        bincode::serialize_into(file,   &storage).map_err(|_|SGError::SerializationFailed)?;
-        Ok(())        
-    }
-
-
+  
     ///
     /// Saves full grid information (including maps and iterator data).
     /// Larger than compact form but faster than regenerating (compressed using LZ4).
     /// 
-    pub fn save_full(&mut self, path: &str) -> Result<(), SGError>
+    pub fn save(&mut self, path: &str) -> Result<(), SGError>
     {
-        // Save iterator data if it doesn't exist
-        if self.iterator_data.is_none()
-        {
-            self.update_runtime_data();
-        }
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
         let buffer = lz4_flex::compress_prepend_size(&bincode::serialize(&self).map_err(|_|SGError::SerializationFailed)?);
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
 
-    ///
-    /// Reads compact form of data. This requires
-    /// regenerating iterator data, which can take seconds when grid
-    /// is initially read.
-    ///   
-    pub fn read_compact_buffer(buffer: &[u8]) -> Result<Self, SGError>
-    {      
-        let data:  SparseGridDataAndValues<D, DIM_OUT> = bincode::deserialize_from(buffer).map_err(|_|SGError::DeserializationFailed)?;
-        let mut grid: SparseGridBase<D, DIM_OUT> = data.into();
-        grid.update_runtime_data();
-        Ok(grid)
-    }
     
     ///
     /// Reads full grid information (including maps and iterator data).
     /// Much larger than compact form but faster than regenerating.
     /// 
-    pub fn read_full_buffer(buffer: &[u8]) -> Result<Self, SGError>
+    pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError>
     {      
         let buffer = lz4_flex::decompress_size_prepended(buffer).map_err(|_|SGError::LZ4DecompressionFailed)?;
         bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
@@ -675,24 +574,11 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     /// Reads full grid information (including maps and iterator data).
     /// Much larger than compact form but faster than regenerating.
     /// 
-    pub fn read_full<Reader: std::io::Read>(mut reader: Reader)  -> Result<Self, SGError>
+    pub fn read<Reader: std::io::Read>(mut reader: Reader)  -> Result<Self, SGError>
     {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
         let buffer = lz4_flex::decompress_size_prepended(&bytes).map_err(|_|SGError::LZ4DecompressionFailed)?;
         bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
-    }
-
-    ///
-    /// Reads compact form of data. This requires
-    /// regenerating iterator data, which can take seconds when grid
-    /// is initially read.
-    /// 
-    pub fn read_compact<Reader: std::io::Read>(reader: Reader)  -> Result<Self, SGError>
-    {
-        let data:  SparseGridDataAndValues<D, DIM_OUT> = bincode::deserialize_from(reader).map_err(|_|SGError::DeserializationFailed)?;
-        let mut grid: SparseGridBase<D, DIM_OUT> = data.into();
-        grid.update_runtime_data();
-        Ok(grid)
     }
 }
