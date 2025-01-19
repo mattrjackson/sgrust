@@ -34,11 +34,6 @@ impl<'a, const D: usize> HashMapGridIterator<'a, D>
         Self { storage, index: storage[0], seq: storage.index_of(&point) }
     }
     
-    #[inline(always)]
-    pub fn valid_seq(&self) -> bool
-    {
-        self.seq.is_some()
-    }
     pub(crate) fn set_index(&mut self, point: GridPoint<D>)
     {
         self.index = point;

@@ -179,11 +179,11 @@ impl<const D: usize> GridPoint<D>
 
 }
 
-impl<const D: usize> Into<u64> for GridPoint<D>
+impl<const D: usize> From<GridPoint<D>> for u64
 {
-    fn into(self) -> u64 {
+    fn from(val: GridPoint<D>) -> Self {
         let hasher = &mut FxHasher::default();
-        self.hash(hasher);
+        val.hash(hasher);
         hasher.finish()
     }
 }

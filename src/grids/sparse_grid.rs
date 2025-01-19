@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelBridge, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelBridge, ParallelIterator};
 use serde_with::serde_as;
 use crate::algorithms::basis_evaluation::BasisEvaluation;
 use crate::algorithms::integration::{AnisotropicQuadrature, IsotropicQuadrature};

@@ -1,6 +1,6 @@
 use num_traits::Float;
 
-use crate::{ basis::base::Basis, errors::SGError, iterators::{grid_iterator::GridIteratorT, grid_iterator_cache::AdjacencyGridIterator}};
+use crate::{basis::base::Basis, errors::SGError, iterators::grid_iterator::GridIteratorT};
 use super::{basis_evaluation::BasisEvaluation, basis_evalution_with_boundary::eval_boundary};
 
 pub(crate) struct InterpolationOperation<'a, const D: usize, const DIM_OUT: usize, BASIS: Basis>(pub bool, pub BasisEvaluation<'a, D, DIM_OUT, BASIS>);

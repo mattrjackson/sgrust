@@ -72,7 +72,7 @@ fn regular_generator_iterative<const D: usize>(storage: &mut SparseGridData<D>, 
             let mut l = 1;
             // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
             let n = levels[d] as u32;
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n as u32
+            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
@@ -151,12 +151,12 @@ pub fn cliques<const D: usize>(storage: &mut SparseGridData<D>, levels: [usize; 
                 continue;
             }
             let level_max = point.level_max();
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n as u32
+            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + D as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
                     let is_leaf = (l + level_sum) as u32 == n + D as u32 - 1;
-                    point.level[d] = l as u8;
+                    point.level[d] = l;
                     point.index[d] = i;
                     point.set_is_leaf(is_leaf);
                     if !first
@@ -204,7 +204,7 @@ fn full_iterative<const D: usize>(storage: &mut SparseGridData<D>, level: usize)
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
-                    let is_leaf = point.level_sum() as u32 == n as u32 * D as u32;
+                    let is_leaf = point.level_sum() as u32 == n * D as u32;
                     point.level[d] = l as u8;
                     point.index[d] = i;
                     point.set_is_leaf(is_leaf);
@@ -341,7 +341,7 @@ fn regular_with_boundaries_iter<const D:usize>(storage: &mut SparseGridData<D>, 
             let d = d as usize;
             // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
             let n = levels[d];
-            while (l + level_sum) as f64 - (t * l.max(level_max as u8) as f64) <= upper_bound && l.max(level_max as u8) <= n as u8
+            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= upper_bound && l.max(level_max) <= n as u8
             {
                 for i in (1..(1 << l)).step_by(2)
                 {
