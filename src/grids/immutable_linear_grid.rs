@@ -213,6 +213,7 @@ fn check_size_difference()
      grid.save("grid.bin").unwrap();
      let igrid: ImmutableLinearGrid<f32, 6,1> = grid.into();
      igrid.save("igrid.bin").unwrap();
+     let _open_check = ImmutableLinearGrid::<f32, 6,1>::read(std::fs::File::open("igrid.bin").unwrap()).unwrap();
 
      let grid_size = std::fs::metadata("grid.bin").unwrap().len();
      let igrid_size = std::fs::metadata("igrid.bin").unwrap().len();

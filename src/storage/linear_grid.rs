@@ -434,7 +434,7 @@ pub struct SparseGridData<const D: usize>
     pub(crate) nodes: Vec<GridPoint<D>>,
     pub(crate) adjacency_data: NodeAdjacencyData,    
     pub(crate) has_boundary: bool,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub(crate) map: FxHashMap<u64, usize>
 }
 

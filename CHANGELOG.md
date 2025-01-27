@@ -9,6 +9,17 @@
 ### Removed
 ### Fixed
 -->
+
+## [0.4.1] — 2025-01-27
+
+### Security
+### Added
+### Changed
+Corrected a bug when deserializing grids.
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.4.0] — 2025-01-18
 
 ### Security
