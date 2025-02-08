@@ -499,7 +499,7 @@ impl<const D: usize> SparseGridData<D>
         let mut iterator = HashMapGridIterator::new(self);
         let offset =  dim * self.len();
         let active_index = offset + seq;
-        if !array[active_index].is_complete()
+        if !array[active_index].inner.is_complete()
         {
             let node_index= iterator.storage[seq]; 
             iterator.set_index(node_index);
@@ -507,30 +507,30 @@ impl<const D: usize> SparseGridData<D>
             if let Some(left_index) = iterator.index()
             {                
                 // assign left node            
-                array[active_index].set_left(left_index as i64 - seq as i64);
-                array[active_index].set_has_left(true);
+                array[active_index].inner.set_left(left_index as i64 - seq as i64);
+                array[active_index].inner.set_has_left(true);
                 // assign right node for left of current node...
-                array[offset + left_index].set_right(seq as i64 - left_index as i64);
-                array[offset + left_index].set_has_right(true);
+                array[offset + left_index].inner.set_right(seq as i64 - left_index as i64);
+                array[offset + left_index].inner.set_has_right(true);
             }
             iterator.set_index(node_index);
             iterator.step_right(dim);     
             if let Some(right_index) = iterator.index()
             {
                 // assign right node
-                array[active_index].set_right(right_index as i64 - seq as i64);
-                array[active_index].set_has_right(true);
+                array[active_index].inner.set_right(right_index as i64 - seq as i64);
+                array[active_index].inner.set_has_right(true);
                 // assign left node for right of current node...
-                array[offset + right_index].set_left(seq as i64 - right_index as i64);
-                array[offset + right_index].set_has_left(true);
+                array[offset + right_index].inner.set_left(seq as i64 - right_index as i64);
+                array[offset + right_index].inner.set_has_left(true);
             }        
             iterator.set_index(node_index);
             iterator.up(dim);       
             if let Some(parent_index) = iterator.index()  // parent exists
             {
                 // assign parent
-                array[active_index].set_up(parent_index as i64 - seq as i64);      
-                array[active_index].set_has_parent(true);
+                array[active_index].inner.set_up(parent_index as i64 - seq as i64);      
+                array[active_index].inner.set_has_parent(true);
             }
             iterator.set_index(node_index);
             // get left child
@@ -538,9 +538,9 @@ impl<const D: usize> SparseGridData<D>
             if let Some(lc_index) = iterator.index()
             {
                 // assign left child
-                array[active_index].set_has_left_child(true);
-                array[active_index].set_down(lc_index as i64 - seq as i64);
-                array[active_index].set_has_child(true);
+                array[active_index].inner.set_has_left_child(true);
+                array[active_index].inner.set_down(lc_index as i64 - seq as i64);
+                array[active_index].inner.set_has_child(true);
             }
             
             iterator.set_index(node_index);
@@ -549,45 +549,46 @@ impl<const D: usize> SparseGridData<D>
             if let Some(rc_index) = iterator.index()
             {
                 // assign right child
-                array[active_index].set_has_right_child(true);
+                array[active_index].inner.set_has_right_child(true);
                 // this potentially overwrites the down index if left child exists,
                 // but that's ok. We just need one of them, or to know neither exist.
-                array[active_index].set_down(rc_index as i64 - seq as i64);
-                array[active_index].set_has_child(true);
+                array[active_index].inner.set_down(rc_index as i64 - seq as i64);
+                array[active_index].inner.set_has_child(true);
             } 
-            iterator.reset_to_left_level_zero(dim);
+            iterator.reset_to_left_level_zero(dim);            
             // Handle left level zero
-            if let Some(lzero) = iterator.index() {             
+            if let Some(lzero) = iterator.index() {                             
                 // we know what the correct index is...
                 // first let's find the leftmost node linked in our data structure.
                 let mut left_index = seq as u32;
-                while array[offset + left_index as usize].has_left()
+                while array[offset + left_index as usize].inner.has_left()
                 {
-                    left_index = (left_index as i64 + array[offset + left_index as usize].left()) as u32;
+                    left_index = (left_index as i64 + array[offset + left_index as usize].inner.left()) as u32;
                 }
                 // If the leftmost node isn't the boundary, we need to update our data structure
                 // such that if it has boundaries, we set its left boundary neighbor.
                 if left_index != lzero as u32
                 {
-                    array[offset + left_index as usize].set_left(lzero as i64 - left_index as i64);
-                    array[offset + left_index as usize].set_has_left(true);
+                    array[offset + left_index as usize].inner.set_left(lzero as i64 - left_index as i64);
+                    array[offset + left_index as usize].inner.set_has_left(true);
                 }
+                array[active_index].left_zero = lzero as u32;
             } 
             iterator.reset_to_right_level_zero(dim);
             if let Some(rzero) = iterator.index()
             {
                 // first let's find the rightmost node linked in our data structure.
                 let mut right_index = seq as u32;
-                while array[offset + right_index as usize].has_right()
+                while array[offset + right_index as usize].inner.has_right()
                 {
-                    right_index = (right_index as i64 + array[offset + right_index as usize].right()) as u32;
+                    right_index = (right_index as i64 + array[offset + right_index as usize].inner.right()) as u32;
                 }
                 // If the rightmost node isn't the boundary, we need to update our data structure
                 // such that if it has boundaries, we set its right boundary neighbor.
                 if right_index != rzero as u32
                 {
-                    array[offset + right_index as usize].set_right(rzero as i64 - right_index as i64);
-                    array[offset + right_index as usize].set_has_right(true);
+                    array[offset + right_index as usize].inner.set_right(rzero as i64 - right_index as i64);
+                    array[offset + right_index as usize].inner.set_has_right(true);
                 }
             }       
         }

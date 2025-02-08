@@ -16,10 +16,6 @@ For `LinearGrid`, there are effectively two ways to handle updating values and r
 1. Enable refinement/coarsening on the `CombinationGrid`. 
 2. Revise data structures for `LinearGrid` to improve data locality.
 
-## Performance:
-
-For the low-dimensionality cases I work with (<10 dimensions), I have found the `LinearGrid` to be ~10x faster than corresponding capabilities in SG++ or TASMANIAN (see credits below). This is largely due to a memory vs performance tradeoff. Lagrange interpolation performance on the SGRust `CombinationGrid` is roughly the same as TASMANIAN. 
-
 ## Credits:
 
 Many of the algorithms were adapted from two excellent C++ codes: SG++ and TASMANIAN. The main motivation for creation of this library was to have a pure Rust implementation that didn't require the use of unsafe blocks to access external C++ libraries. 

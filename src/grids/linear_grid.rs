@@ -3,7 +3,7 @@ use crate::algorithms::refinement::RefinementFunctor;
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::algorithms::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
-use crate::storage::linear_grid::SparseGridData;
+use crate::storage::linear_grid::{BoundingBox, SparseGridData};
 use crate::generators::base::*;
 use serde::{Serialize, Deserialize};
 
@@ -146,12 +146,39 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
     
 }
 
+#[test]
+fn check_make_grid_1d()
+{
+    let level = 18;
+    let mut grid = LinearGrid::<1,1>::new();
+    *grid.bounding_box_mut() = BoundingBox::new([0.0], [1.00]);
+    grid.full_grid_with_boundaries(level);
+    let points = grid.points();
+    let mut values = vec![[0.0; 1]; grid.len()];
+    for (point, value) in points.zip(values.iter_mut())
+    {
+        value[0] = point[0]*point[0];        
+        //println!("{},{}", point[0], value[0]);
+    }    
+    grid.set_values(values.clone()).unwrap();
+    println!("number of points={}", grid.len());
+    println!("interpolated value={}", grid.interpolate([0.2]).unwrap()[0]);
+    assert!((grid.interpolate([0.2]).unwrap()[0]-0.04).abs() < 1e-2);
+    let start = std::time::Instant::now();
+    for _i in 0..1e6 as usize
+    {
+        let _r = grid.interpolate([0.8]).unwrap();
+    }
+    
+    println!("1e6 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
+}
+
 
 
 #[test]
 fn check_make_grid()
 {
-    let level = 6;
+    let level = 8;
     let mut grid = LinearGrid::<2,1>::new();
     grid.full_grid(level);
     assert_eq!(grid.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);

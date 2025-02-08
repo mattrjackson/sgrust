@@ -30,16 +30,16 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
         // First we determine which way we iterate up or down the level hierarchy...
         if level == 0
         {
-            if self.storage.adjacency_data[offset + index].has_left_child() 
+            if self.storage.adjacency_data[offset + index].inner.has_left_child() 
             {            
                 index = self.compute_left_child(dim) as usize;              
             }
         }
         else
         {
-            while self.storage.adjacency_data[offset + index].has_parent()
+            while self.storage.adjacency_data[offset + index].inner.has_parent()
             {            
-                index = (index as i64 + self.storage.adjacency_data[offset + index].up()) as usize;
+                index = (index as i64 + self.storage.adjacency_data[offset + index].inner.up()) as usize;
                 if self.storage[index].level[dim] == 1
                 {
                     break;
@@ -61,9 +61,9 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
             std::cmp::Ordering::Less => {
                 // Need to step to the right until we find index = 1.
                 let mut right_index = index;
-                while self.storage.adjacency_data[self.offset(dim) + right_index].has_right()
+                while self.storage.adjacency_data[self.offset(dim) + right_index].inner.has_right()
                 {
-                    right_index = (right_index as i64 + self.storage.adjacency_data[self.offset(dim) + right_index].right()) as usize;
+                    right_index = (right_index as i64 + self.storage.adjacency_data[self.offset(dim) + right_index].inner.right()) as usize;
                     if right_index == 1 
                     {
                         // We've found the node with index 1.
@@ -78,9 +78,9 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
             std::cmp::Ordering::Greater => 
             {
                 let mut left_index = index;
-                while self.storage.adjacency_data[self.offset(dim) + left_index].has_left()
+                while self.storage.adjacency_data[self.offset(dim) + left_index].inner.has_left()
                 {
-                    left_index = (left_index as i64 + self.storage.adjacency_data[self.offset(dim) + left_index].left()) as usize;
+                    left_index = (left_index as i64 + self.storage.adjacency_data[self.offset(dim) + left_index].inner.left()) as usize;
                     if left_index == 1
                     {
                         // We've found the node with index 1.
@@ -95,29 +95,20 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
 
     /// Compute the index of the left boundary node (e.g. the left zero-level node) for the given dimension.
     #[inline]
-    pub fn compute_lzero(&self, dim: usize) -> Option<u32> {        
-        let mut index = self.index.unwrap();
-        let offset = self.offset(dim);
-        while self.storage.adjacency_data[offset + index].has_left()
-        {
-            index = (index as i64 + self.storage.adjacency_data[offset + index].left()) as usize
-        }
-        if self.storage[index].index[dim] != 0
-        {
-            None
-        }
-        else {
-            Some(index as u32)    
-        }        
+    pub fn compute_lzero(&self, dim: usize) -> Option<u32> {      
+        let index = self.index.unwrap();
+        let offset = self.offset(dim);  
+        Some(self.storage.adjacency_data[offset + index].left_zero)  
     }
+    
     #[inline]
     fn compute_left_child(&self, dim: usize) -> u32
     {
         let original_node = &self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()];
         let node_index = self.storage[self.index.unwrap()].index[dim];
-        if original_node.has_child()
+        if original_node.inner.has_child()
         {
-            let index = self.index.unwrap() as i64 + original_node.down();
+            let index = self.index.unwrap() as i64 + original_node.inner.down();
             let dim_index = self.storage[index as usize].index[dim];
             if dim_index == (2*node_index - 1)
             {
@@ -125,7 +116,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
             }
             else
             {               
-                (index + self.storage.adjacency_data[self.offset(dim) + index as usize].left()) as u32
+                (index + self.storage.adjacency_data[self.offset(dim) + index as usize].inner.left()) as u32
             }
         }
         else
@@ -140,9 +131,9 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
         let node_index = self.index.unwrap();
         let original_node = &self.storage.adjacency_data[self.offset(dim) + node_index];
         let node_index = self.storage[node_index].index[dim];
-        if original_node.has_child()
+        if original_node.inner.has_child()
         {
-            let index = self.index.unwrap() as i64 + original_node.down();
+            let index = self.index.unwrap() as i64 + original_node.inner.down();
             let dim_index = self.storage[index as usize].index[dim];
             if dim_index == 2*node_index + 1
             {
@@ -151,7 +142,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
             else
             {   
                 // We check that the right child exists before this is called, so this should never panic.           
-                (index  + self.storage.adjacency_data[ self.offset(dim) + index as usize].right()) as u32
+                (index  + self.storage.adjacency_data[ self.offset(dim) + index as usize].inner.right()) as u32
             }
         }
         else
@@ -165,9 +156,9 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     pub fn compute_rzero(&self, dim: usize) -> Option<u32> {
         let mut index = self.index.unwrap();
         let offset = self.offset(dim);
-        while self.storage.adjacency_data[ offset + index].has_right()
+        while self.storage.adjacency_data[ offset + index].inner.has_right()
         {
-            index = (index as i64 + self.storage.adjacency_data[offset + index].right()) as usize            
+            index = (index as i64 + self.storage.adjacency_data[offset + index].inner.right()) as usize            
         }        
         if self.storage[index].index[dim] != 1
         {
@@ -193,13 +184,13 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     #[allow(unused)]
     pub(crate) fn has_left_leaf(&self, dim: usize) -> bool
     {
-        self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].has_left_child()
+        self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.has_left_child()
     }
     #[inline]
     #[allow(unused)]
     pub(crate) fn has_right_leaf(&self, dim: usize) -> bool
     {
-        self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].has_right_child()
+        self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.has_right_child()
     } 
   
 }
@@ -255,7 +246,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     #[inline]
     fn left_child(&mut self, dim: usize) -> bool
     {
-        match self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].has_left_child()
+        match self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.has_left_child()
         {
             true => 
             {                
@@ -272,7 +263,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     #[inline]
     fn right_child(&mut self, dim: usize) -> bool
     {
-        match self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].has_right_child()
+        match self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.has_right_child()
         {
             true => 
             {                
@@ -298,9 +289,9 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     
     fn up(&mut self, dim: usize) -> bool
     {
-        if self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].has_parent()
+        if self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.has_parent()
         {
-            self.index = Some((self.index.unwrap() as i64 + self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].up()) as usize);
+            self.index = Some((self.index.unwrap() as i64 + self.storage.adjacency_data[self.offset(dim) + self.index.unwrap()].inner.up()) as usize);
             true
         }
         else

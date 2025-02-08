@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.4.2] — 2025-02-08
+
+### Security
+### Added
+### Changed
+Modified the adjacency data to also store the left level zero, which can significantly speed up interpolation for smaller grids with boundaries.
+### Deprecated
+### Removed
+### Fixed
+
+
 ## [0.4.1] — 2025-01-27
 
 ### Security

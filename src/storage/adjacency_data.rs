@@ -27,11 +27,18 @@ impl DerefMut for NodeAdjacencyData
 }
 
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct NodeAdjacency
+{
+    pub(crate) inner: NodeAdjacencyInner,
+    pub(crate) left_zero: u32,
+}
+
 
 use bitfield_struct::bitfield;
 
 #[bitfield(u128)]
-pub(crate) struct NodeAdjacency {
+pub(crate) struct NodeAdjacencyInner {
     #[bits(30)]
     pub(crate) left: i64,
     #[bits(30)]
@@ -55,7 +62,7 @@ pub(crate) struct NodeAdjacency {
     #[bits(2)]
     _other: u8
 }
-impl NodeAdjacency
+impl NodeAdjacencyInner
 { 
     #[inline]
     pub fn is_complete(&self) -> bool {
@@ -64,7 +71,7 @@ impl NodeAdjacency
 }
 
 // Serialize Implementation
-impl Serialize for NodeAdjacency {
+impl Serialize for NodeAdjacencyInner {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -75,7 +82,7 @@ impl Serialize for NodeAdjacency {
 }
 
 // Deserialize Implementation
-impl<'de> Deserialize<'de> for NodeAdjacency {
+impl<'de> Deserialize<'de> for NodeAdjacencyInner {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -7,10 +7,6 @@ use crate::{basis::base::Basis, iterators::grid_iterator::GridIteratorT, storage
 pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign, Iterator: GridIteratorT<D>>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
     dim: usize, value: T, iterator: &mut Iterator, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
 {
-    if value.abs().to_f64().unwrap() < 1e-14
-    {
-        return;
-    }
     let mut level = 0;
     loop
     {
