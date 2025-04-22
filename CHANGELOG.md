@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.4.3] — 2025-04-22
+
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+Removed unneeded print statements that were used for debugging.
+### Fixed
+
+
 ## [0.4.2] — 2025-02-08
 
 ### Security

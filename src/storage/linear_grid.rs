@@ -392,9 +392,7 @@ impl<const D: usize> SparseGridData<D>
                 }
             }                
             point.flags.set_is_leaf(is_leaf);            
-        }
-        println!("# of leaves={}", self.nodes.iter().filter(|&&x|x.is_leaf()).count());
-        println!("# of inner points={}", self.nodes.iter().filter(|&&x|x.is_inner_point()).count());
+        }        
     }
 
     ///

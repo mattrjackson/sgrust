@@ -1,6 +1,6 @@
 [package]
 name = "sgrust"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 license = "MIT"
 keywords = ["sparsegrid", "interpolation"]
@@ -32,8 +32,7 @@ opt-level = 3
 opt-level = 3
 
 [profile.release]
-debug = false
-strip = true
+debug = false 
 
 [[bench]]
 name = "linear_grid"
