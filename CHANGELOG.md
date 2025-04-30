@@ -10,6 +10,16 @@
 ### Fixed
 -->
 
+## [0.4.4] — 2025-04-29
+
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Corrected bug in `coarsen` function that on rare occasions could result in the zero index node being removed.
+
 ## [0.4.3] — 2025-04-22
 
 ### Security
