@@ -10,7 +10,7 @@ pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize> : Send + Sync
     ///
     /// Return criteria for determining refinement threshold
     /// 
-    fn eval(&self, storage: &SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], seq: usize) -> f64;
+    fn eval(&self, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64>;
 
     ///
     /// Return threshold for refinement or coarsening
@@ -265,9 +265,10 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for 
     fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize> {
         let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
+        let error_estimate = functor.eval(alpha, values);
         iterate_refinable_points(storage, &mut |(seq, _point)|
         {        
-            if functor.eval(storage, alpha, values, seq) > functor.threshold()
+            if error_estimate[seq] > functor.threshold()
             {
                 refinable_nodes.push(seq);  
             }

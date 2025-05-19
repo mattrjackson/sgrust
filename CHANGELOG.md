@@ -10,6 +10,20 @@
 ### Fixed
 -->
 
+## [0.4.5] — 2025-05-18
+
+### Security
+### Added
+### Changed
+1. Upgraded to bincode 2.x. 
+2. Minor performance improvements 
+3. Modified refinement and coarsening functors to calculation values for all points in the refinement iteration, rather than individually. This can be significantly faster depending when calling the library outside of Rust.
+### Deprecated
+### Removed
+### Fixed
+Corrected bug in `coarsen` function that on rare occasions could result in the zero index node being removed.
+
+
 ## [0.4.4] — 2025-04-29
 
 ### Security

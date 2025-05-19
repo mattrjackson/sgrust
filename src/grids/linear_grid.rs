@@ -3,7 +3,7 @@ use crate::algorithms::refinement::RefinementFunctor;
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::algorithms::hierarchisation::{LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
-use crate::storage::linear_grid::{BoundingBox, SparseGridData};
+use crate::storage::linear_grid::SparseGridData;
 use crate::generators::base::*;
 use serde::{Serialize, Deserialize};
 
@@ -67,7 +67,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
             self.0.hierarchize(&op);  
         }
     }
-    fn refine<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT], max_iterations: usize)
+    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize)
     {
         if !self.has_boundary()
         {
@@ -97,10 +97,10 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
         self.base_mut().storage.generate_adjacency_data();
     }
 
-    fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool)
+    fn update_refined_values(&mut self, values: &[[f64; DIM_OUT]], sort_data: bool)
     {
         let starting_index = self.values().len() - values.len();
-        for (value, new_value) in self.base_mut().values[starting_index..].iter_mut().zip(values)
+        for (value, &new_value) in self.base_mut().values[starting_index..].iter_mut().zip(values)
         {
             *value = new_value;
         }
@@ -149,6 +149,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
 #[test]
 fn check_make_grid_1d()
 {
+    use crate::storage::linear_grid::BoundingBox;
     let level = 18;
     let mut grid = LinearGrid::<1,1>::new();
     *grid.bounding_box_mut() = BoundingBox::new([0.0], [1.00]);
@@ -325,10 +326,10 @@ fn check_grid_refinement()
     let mut grid = LinearGrid::<2,1>::new();
     grid.full_grid_with_boundaries(level);
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
-    grid.update_values(&mut|point| [point[0]*point[0] + point[1]*point[1]]);
+    grid.update_values(&|point| [point[0]*point[0] + point[1]*point[1]]);
     println!("---- After Refinement ----");
     let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
-    grid.refine(&functor, &mut |x| [x[0]*x[0] + x[1]*x[1]], 20);
+    grid.refine(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
     // for point in grid.storage.iter()
     // {
     //     let c = point.unit_coordinate();
@@ -379,8 +380,8 @@ fn check_grid_refinement_iteration()
     let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
     for _ in 0..20
     {
-        let values = grid.refine_iteration(&functor).iter_mut().map(|point| [point[0]*point[0] + point[1]*point[1]]).collect();
-        grid.update_refined_values(values, false);
+        let values: Vec<_> = grid.refine_iteration(&functor).iter_mut().map(|point| [point[0]*point[0] + point[1]*point[1]]).collect();
+        grid.update_refined_values(&values, false);
     }
     grid.sort();
     println!("{},{}", grid.interpolate([0.2, 0.3]).unwrap()[0], (0.2*0.2+0.3*0.3));
@@ -431,7 +432,7 @@ fn fit_1d_gaussian_cdf()
     grid.set_values(values.clone()).unwrap();    
     grid.hierarchize();
     let functor = SurplusRefinement(1e-3);
-    grid.refine(&functor, &mut |x| [0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], 20);
+    grid.refine(&functor, &|x| [0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], 20);
     let x = [0.323];
     let exact = 0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2));
     assert!((grid.interpolate(x).unwrap()[0]-exact).abs() < 1e-3);

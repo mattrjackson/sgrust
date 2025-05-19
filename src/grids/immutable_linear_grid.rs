@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use bincode::config::standard;
 use num_traits::Float;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 use serde::Serialize;
@@ -148,7 +149,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     pub fn save(&self, path: &str) -> Result<(), SGError>
     {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = lz4_flex::compress_prepend_size(&bincode::serialize(&self).map_err(|_|SGError::SerializationFailed)?);
+        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
@@ -158,7 +159,8 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError>
     {      
         let buffer = lz4_flex::decompress_size_prepended(buffer).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
+        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
+        Ok(grid)
     }
 
     ///
@@ -169,7 +171,8 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
         let buffer = lz4_flex::decompress_size_prepended(&bytes).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
+        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
+        Ok(grid)
     }
 }
 

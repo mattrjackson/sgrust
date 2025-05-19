@@ -134,18 +134,18 @@ impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize> IsotropicQuadra
         let mut integral = [T::zero(); DIM_OUT];
         for (i, point) in storage.nodes().iter().enumerate()
         {
-            let mut pow = T::from(2.0_f64.powf(-(point.level_sum() as f64))).unwrap();
+            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64).unwrap();
             if !point.is_inner_point()
             {
                 let mut num_boundaries = 0;
                 for d in 0..D
                 {
-                    if point.index[d] == 0 || 2_usize.pow(point.level[d] as u32) == point.index[d] as usize
+                    if point.index[d] == 0 || (1 << point.level[d] as usize) == point.index[d] as usize
                     {
                         num_boundaries += 1;
                     }
                 }
-                pow = pow * T::from(2.0_f64.powi(-num_boundaries)).unwrap();
+                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64).unwrap();
             }                
             #[allow(clippy::needless_range_loop)]
             for dim in 0..DIM_OUT
@@ -171,15 +171,15 @@ impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for
     {   
         let mut integral_component = [1.0; DIM_OUT];
         let point = &storage[index];
-        let mut weight = 2.0_f64.powf(-(point.level[dim] as f64));
+        let mut weight = 1.0 / (1 << point.level[dim]) as f64;
         if !point.is_inner_point()
         {
             let mut num_boundaries = 0;
-            if point.index[dim] == 0 || 2_usize.pow(point.level[dim] as u32) == point.index[dim] as usize
+            if point.index[dim] == 0 || (1 << point.level[dim]) == point.index[dim] as usize
             {
                 num_boundaries += 1;
             }
-            weight *= 2.0_f64.powi(-num_boundaries);
+            weight /= (1 << num_boundaries) as f64;
         }        
         #[allow(clippy::needless_range_loop)]
         for i in 0..DIM_OUT

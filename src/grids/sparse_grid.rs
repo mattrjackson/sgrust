@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use bincode::config::standard;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelBridge, ParallelIterator};
 use serde_with::serde_as;
 use crate::algorithms::basis_evaluation::BasisEvaluation;
@@ -139,7 +140,7 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     }
 
     /// Set values using a given evaluation function...
-    fn update_values(&mut self,  eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT])
+    fn update_values<F: Fn(&[f64;D])->[f64; DIM_OUT]> (&mut self,  eval_fun: &F)
     {
         let mut values = Vec::with_capacity(self.len());
         for point in self.points()
@@ -170,7 +171,7 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     /// 
     /// Refine grid based on function `F`. Values are filled serially by calling `eval_fun`. 
     /// 
-    fn refine<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT], max_iterations: usize);
+    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize);
 
     /// 
     /// Refine grid based on function `F`, but use `eval_fun` to fill values in parallel.  
@@ -190,7 +191,7 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     /// For optimal performance, sort the data after your final iteration. Alternately, `sort` can be 
     /// called directly.
     /// 
-    fn update_refined_values(&mut self, values: Vec<[f64; DIM_OUT]>, sort_data: bool);
+    fn update_refined_values(&mut self, values: &[[f64; DIM_OUT]], sort_data: bool);
 
     
     /// Save data to path
@@ -485,7 +486,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         }           
         points
     }
-    pub fn refine<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>>(&mut self, functor: &F, eval_fun: &mut dyn FnMut(&[f64;D])->[f64; DIM_OUT], op: &OP, max_iterations: usize) 
+    pub fn refine<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, op: &OP, max_iterations: usize) 
     {
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let mut iteration = 0;     
@@ -554,7 +555,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn save(&mut self, path: &str) -> Result<(), SGError>
     {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = lz4_flex::compress_prepend_size(&bincode::serialize(&self).map_err(|_|SGError::SerializationFailed)?);
+        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
@@ -567,7 +568,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError>
     {      
         let buffer = lz4_flex::decompress_size_prepended(buffer).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
+        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
+        Ok(grid)
     }
 
     ///
@@ -579,6 +581,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
         let buffer = lz4_flex::decompress_size_prepended(&bytes).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        bincode::deserialize(&buffer).map_err(|_|SGError::DeserializationFailed)
+        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
+        Ok(grid)
     }
 }

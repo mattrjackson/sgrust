@@ -8,11 +8,11 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut Sparse
 {
     let mut kept_points = IndexSet::default();
     let zero_index = storage.adjacency_data.zero_index;
-    for (seq, point) in storage.nodes().iter().enumerate()
+    let values = functor.eval(alpha, values);
+    for (seq, (point, r)) in storage.nodes().iter().zip(values.into_iter()).enumerate()
     {
         if point.is_leaf() && seq != zero_index        
-        {
-            let r = functor.eval(storage, alpha, values, seq);
+        {            
             if r >= functor.threshold()
             {
                 kept_points.insert(seq);
