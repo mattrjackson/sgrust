@@ -9,6 +9,16 @@
 ### Removed
 ### Fixed
 -->
+## [0.4.6] — 2025-05-20
+
+### Security
+### Added
+### Changed
+Modified the refinement functor and removed the threshold method. We now pass in the threshold to the coarsen or refinement calls directly.
+### Deprecated
+### Removed
+### Fixed
+Corrected bug in `coarsen` function that on rare occasions could result in the zero index node being removed.
 
 ## [0.4.5] — 2025-05-18
 

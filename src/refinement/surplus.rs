@@ -1,6 +1,6 @@
 use crate::algorithms::refinement::RefinementFunctor;
 
-pub struct SurplusRefinement<const D: usize, const DIM_OUT: usize>(pub f64);
+pub struct SurplusRefinement<const D: usize, const DIM_OUT: usize>;
 
 impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for SurplusRefinement<D, DIM_OUT>
 {
@@ -12,9 +12,5 @@ impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for Sur
             alpha_i.iter().for_each(|&val| max = max.max(val.abs()));
             max
         }).collect()        
-    }
-
-    fn threshold(&self) -> f64 {
-        self.0
     }
 }

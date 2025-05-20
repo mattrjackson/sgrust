@@ -7,11 +7,10 @@ use crate::algorithms::refinement::RefinementFunctor;
 /// - `storage`: Storage of sparse grid.
 /// - `alpha`: Surplus Coefficients
 /// 
-pub type UserRefinementFunction<const D: usize, const DIM_OUT: usize> = dyn Fn(&[f64; DIM_OUT], &[f64]) -> f64 + Send + Sync;
+pub type UserRefinementFunction<const D: usize, const DIM_OUT: usize> = dyn Fn(&[f64; DIM_OUT], &[f64; DIM_OUT]) -> f64 + Send + Sync;
 pub struct UserDefinedRefinement<'a, const D: usize, const DIM_OUT: usize>
 {
     pub fun_eval: &'a UserRefinementFunction<D, DIM_OUT>,
-    pub threshold: f64,
 }
 
 impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for UserDefinedRefinement<'_, D, DIM_OUT>
@@ -22,9 +21,5 @@ impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for Use
         {
             (self.fun_eval)(alpha_i, values_i)
         }).collect()    
-    }
-
-    fn threshold(&self) -> f64 {
-        self.threshold
     }
 }

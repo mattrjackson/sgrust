@@ -9,13 +9,12 @@ pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize> : Send + Sync
 {
     ///
     /// Return criteria for determining refinement threshold
+    /// `alpha` represents the surplus coefficients for each point
+    /// `values` represents the values at each point
+    /// returns the error estimate at each node. A common choice is
+    /// to just use the absolute value of the surplus.
     /// 
     fn eval(&self, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64>;
-
-    ///
-    /// Return threshold for refinement or coarsening
-    /// 
-    fn threshold(&self) -> f64;
 
     ///
     /// Returns the maximum number of points to be refined. If
@@ -40,7 +39,7 @@ pub trait SparseGridRefinement<const D: usize, const DIM_OUT: usize>
     ///
     /// Refine grid based on criteria computed using functor
     /// 
-    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize>;
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, threshold: f64) -> Vec<usize>;
 
     ///
     /// Returns the number of grid points that can be refined.
@@ -262,13 +261,13 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
 
 impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for BaseRefinement<D, DIM_OUT>
 {
-    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>) -> Vec<usize> {
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, threshold: f64) -> Vec<usize> {
         let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
         let error_estimate = functor.eval(alpha, values);
         iterate_refinable_points(storage, &mut |(seq, _point)|
         {        
-            if error_estimate[seq] > functor.threshold()
+            if error_estimate[seq] > threshold
             {
                 refinable_nodes.push(seq);  
             }

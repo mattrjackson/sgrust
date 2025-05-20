@@ -4,7 +4,7 @@ use crate::storage::linear_grid::SparseGridData;
 
 use super::refinement::RefinementFunctor;
 
-pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> IndexSet<usize>
+pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], threshold: f64) -> IndexSet<usize>
 {
     let mut kept_points = IndexSet::default();
     let zero_index = storage.adjacency_data.zero_index;
@@ -13,7 +13,7 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut Sparse
     {
         if point.is_leaf() && seq != zero_index        
         {            
-            if r >= functor.threshold()
+            if r >= threshold
             {
                 kept_points.insert(seq);
             }

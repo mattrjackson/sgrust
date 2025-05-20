@@ -67,32 +67,32 @@ impl<const D: usize, const DIM_OUT: usize> SparseGrid<D, DIM_OUT> for  LinearGri
             self.0.hierarchize(&op);  
         }
     }
-    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize)
+    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, threshold: f64, max_iterations: usize)
     {
         if !self.has_boundary()
         {
             let op = LinearHierarchisationOperation;  
-            self.0.refine(functor, eval_fun, &op, max_iterations);
+            self.0.refine(functor, eval_fun, &op, threshold, max_iterations);
         }
         else
         {
             let op = LinearBoundaryHierarchisationOperation;
-            self.0.refine(functor, eval_fun, &op, max_iterations);
+            self.0.refine(functor, eval_fun, &op, threshold, max_iterations);
         }        
         self.base_mut().storage.generate_adjacency_data();
     }
 
-    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, max_iterations: usize)
+    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, threshold: f64, max_iterations: usize)
     {
         if !self.has_boundary()
         {
             let op = LinearHierarchisationOperation;  
-            self.0.refine_parallel(functor, eval_fun, &op, max_iterations);
+            self.0.refine_parallel(functor, eval_fun, &op, threshold, max_iterations);
         }
         else
         {
             let op = LinearBoundaryHierarchisationOperation;
-            self.0.refine_parallel(functor, eval_fun, &op, max_iterations);
+            self.0.refine_parallel(functor, eval_fun, &op, threshold, max_iterations);
         }        
         self.base_mut().storage.generate_adjacency_data();
     }
@@ -225,8 +225,8 @@ fn check_make_grid_with_boundaries_2d()
     grid.hierarchize();
     println!("number of points={}", grid.len());
     println!("coarsening");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-5);
-    grid.coarsen(&functor);
+    let functor = crate::refinement::surplus::SurplusRefinement;
+    grid.coarsen(&functor, 1e-5);
     for d in 0..2
     {
         for i in 0..grid.len()
@@ -305,8 +305,8 @@ fn check_make_grid_with_boundaries_6d()
     grid.set_values(values.clone()).unwrap();
     println!("number of points={}", grid.len());
     println!("coarsening");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-4);
-    grid.coarsen(&functor);
+    let functor = crate::refinement::surplus::SurplusRefinement;
+    grid.coarsen(&functor, 1e-4);
     println!("number of points after coarsening={}", grid.len());
     println!("{}", grid.interpolate([0.2,0.2,0.0,0.0,0.0,0.0]).unwrap()[0]);
     assert!((grid.interpolate([0.2,0.2,0.3,0.6,0.99,0.99]).unwrap()[0]-0.08).abs() < 1e-2);
@@ -328,8 +328,8 @@ fn check_grid_refinement()
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     grid.update_values(&|point| [point[0]*point[0] + point[1]*point[1]]);
     println!("---- After Refinement ----");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
-    grid.refine(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
+    let functor = crate::refinement::surplus::SurplusRefinement;
+    grid.refine(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 1e-7, 20);
     // for point in grid.storage.iter()
     // {
     //     let c = point.unit_coordinate();
@@ -349,8 +349,8 @@ fn check_grid_refinement_parallel()
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     grid.update_values_parallel(&|point| [point[0]*point[0] + point[1]*point[1]]);
     println!("---- After Refinement ----");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
-    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
+    let functor = crate::refinement::surplus::SurplusRefinement;
+    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 1e-7, 20);
     println!("number of points={}", grid.len());   
     println!("{},{}",grid.interpolate([0.2,0.3]).unwrap()[0], (0.2*0.2+0.3*0.3));
     assert!((1.0 - grid.interpolate([0.2,0.3]).unwrap()[0]/(0.2*0.2+0.3*0.3)).abs() < 1e-6);
@@ -377,10 +377,10 @@ fn check_grid_refinement_iteration()
         println!("{},{}", c[0], c[1]);
     }
     println!("---- After Refinement ----");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-7);
+    let functor = crate::refinement::surplus::SurplusRefinement;
     for _ in 0..20
     {
-        let values: Vec<_> = grid.refine_iteration(&functor).iter_mut().map(|point| [point[0]*point[0] + point[1]*point[1]]).collect();
+        let values: Vec<_> = grid.refine_iteration(&functor, 1e-7).iter_mut().map(|point| [point[0]*point[0] + point[1]*point[1]]).collect();
         grid.update_refined_values(&values, false);
     }
     grid.sort();
@@ -406,8 +406,8 @@ fn check_parallel_grid_refinement()
 
     let num_points_original = grid.len();
     println!("---- After Refinement ----");
-    let functor = crate::refinement::surplus::SurplusRefinement(1e-6);
-    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 20);
+    let functor = crate::refinement::surplus::SurplusRefinement;
+    grid.refine_parallel(&functor, &|x| [x[0]*x[0] + x[1]*x[1]], 1e-6, 20);
     println!("number of points={}", grid.len());   
     assert!(num_points_original < grid.len());
 }
@@ -431,8 +431,8 @@ fn fit_1d_gaussian_cdf()
     }
     grid.set_values(values.clone()).unwrap();    
     grid.hierarchize();
-    let functor = SurplusRefinement(1e-3);
-    grid.refine(&functor, &|x| [0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], 20);
+    let functor = SurplusRefinement;
+    grid.refine(&functor, &|x| [0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], 1e-3, 20);
     let x = [0.323];
     let exact = 0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2));
     assert!((grid.interpolate(x).unwrap()[0]-exact).abs() < 1e-3);
