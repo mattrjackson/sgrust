@@ -5,10 +5,10 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallel
 use serde_with::serde_as;
 use crate::algorithms::basis_evaluation::BasisEvaluation;
 use crate::algorithms::integration::{AnisotropicQuadrature, IsotropicQuadrature};
-use crate::algorithms::refinement::{BaseRefinement, RefinementFunctor, SparseGridRefinement};
+use crate::algorithms::refinement::{BaseRefinement, RefinementFunctor, RefinementMode, RefinementOptions, SparseGridRefinement};
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
-use crate::algorithms::hierarchisation::HierarchisationOperation;
+use crate::algorithms::hierarchisation::{HierarchisationOperation, LinearBoundaryHierarchisationOperation, LinearHierarchisationOperation};
 use crate::iterators::grid_iterator_cache::AdjacencyGridIterator;
 use crate::storage::linear_grid::{BoundingBox, GridPoint, PointIterator, SparseGridData};
 use crate::generators::base::*;
@@ -167,24 +167,25 @@ pub trait SparseGrid<const D: usize, const DIM_OUT: usize>
     {
         self.base_mut().coarsen(functor, true, threshold)
     }
-
-    /// 
+    
+        /// 
     /// Refine grid based on function `F`. Values are filled serially by calling `eval_fun`. 
     /// 
-    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, threshold: f64, max_iterations: usize);
+    fn refine<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, options: RefinementOptions, max_iterations: usize);
 
     /// 
     /// Refine grid based on function `F`, but use `eval_fun` to fill values in parallel.  
     /// 
-    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, threshold: f64, max_iterations: usize);
+    fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, eval_fun: &EF, options: RefinementOptions, max_iterations: usize);
 
     /// 
     /// Perform a single refinement iteration. Returns the slice of points that 
     /// 
-    fn refine_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64) -> Vec<[f64; D]>
+    fn refine_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, options: RefinementOptions) -> Vec<[f64; D]>
     {
-        self.base_mut().refine_iteration(functor, threshold)
+        self.base_mut().refine_iteration(functor, options)
     }
+
 
     ///
     /// Update refined values for last iteration (used in conjunction with `refine_single_iteration`).
@@ -444,24 +445,15 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn coarsen<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, update_iterator_data: bool, threshold: f64) -> usize
     {
         let mut total_num_removed = 0;
+        let mut last_num_removed: usize;
         loop
-        {
-            let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values, threshold);
-            if r.len() == self.alpha.len()
+        {            
+            last_num_removed =  self.coarsen_iteration(functor, threshold);                
+            total_num_removed += last_num_removed;
+            if last_num_removed == 0
             {
                 break;
             }
-            let mut new_alpha = Vec::with_capacity(r.len());
-            let mut new_values = Vec::with_capacity(r.len());
-            for i in r
-            {
-                new_alpha.push(self.alpha[i]);
-                new_values.push(self.values[i]);                
-            }
-            total_num_removed += self.alpha.len() - new_alpha.len(); 
-            self.alpha = new_alpha;
-            self.values = new_values;
-                
         }
         if update_iterator_data
         {
@@ -472,10 +464,36 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         
     }
 
-    pub fn refine_iteration(&mut self, functor: &impl RefinementFunctor<D, DIM_OUT>, threshold: f64) -> Vec<[f64; D]>
+    fn coarsen_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64) -> usize
     {
+        let mut total_num_removed = 0;
+  
+        let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values, threshold);
+        if r.len() != self.alpha.len()
+        {
+            let mut new_alpha = Vec::with_capacity(r.len());
+            let mut new_values = Vec::with_capacity(r.len());
+            for i in r
+            {
+                new_alpha.push(self.alpha[i]);
+                new_values.push(self.values[i]);                
+            }
+            total_num_removed = self.alpha.len() - new_alpha.len(); 
+            self.alpha = new_alpha;
+            self.values = new_values;
+        }
+        total_num_removed
+        
+    }
+
+    pub fn refine_iteration(&mut self, functor: &impl RefinementFunctor<D, DIM_OUT>, options: RefinementOptions) -> Vec<[f64; D]>
+    {
+        if options.refinement_mode == RefinementMode::Anisotropic
+        {                 
+            self.coarsen_iteration(functor, options.threshold);
+        }
         let ref_op = BaseRefinement(self.storage.has_boundary());
-        let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, threshold);
+        let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
         self.values.resize(self.len(), [0.0; DIM_OUT]);            
         let mut points = Vec::with_capacity(indices.len());
         for &i in &indices
@@ -486,13 +504,17 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         }           
         points
     }
-    pub fn refine<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, op: &OP, threshold: f64, max_iterations: usize) 
+    pub fn refine<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>, EF: Fn(&[f64;D])->[f64; DIM_OUT]>(&mut self, functor: &F, eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) 
     {
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let mut iteration = 0;     
         loop
         {
-            let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, threshold);
+            if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
+            {                 
+                self.coarsen_iteration(functor, options.threshold);                
+            }
+            let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
             if indices.is_empty()
             {
                 break;
@@ -515,13 +537,17 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     }
 
     pub fn refine_parallel<F: RefinementFunctor<D, DIM_OUT>, OP: HierarchisationOperation<D, DIM_OUT>, EF: Fn(&[f64;D]) -> [f64; DIM_OUT] + Send + Sync>(&mut self, functor: &F, 
-        eval_fun: &EF, op: &OP, threshold: f64, max_iterations: usize) 
+        eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) 
     {
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let mut iteration = 0;     
         loop
         {
-            let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, threshold);
+            if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
+            {                 
+                self.coarsen_iteration(functor, options.threshold);                
+            }
+            let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
             if indices.is_empty()
             {
                 break;

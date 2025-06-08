@@ -1,5 +1,28 @@
 use crate::storage::linear_grid::{GridPoint, SparseGridData};
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefinementMode
+{
+    #[default]
+    Isotropic,
+    Anisotropic,
+}
+#[derive(Default, Debug, Clone)]
+pub struct RefinementOptions
+{
+    pub threshold: f64,    
+    pub refinement_mode: RefinementMode,
+    pub level_limits: Option<Vec<u8>>, 
+}
+
+impl RefinementOptions
+{
+    pub fn new(threshold: f64) -> Self
+    {
+        Self { threshold, ..Default::default() }
+    }
+}
+
 ///
 /// This trait defines operations used for refinement or coarsening. These
 /// two operations are never done simulataneously, but provide a common
@@ -39,12 +62,12 @@ pub trait SparseGridRefinement<const D: usize, const DIM_OUT: usize>
     ///
     /// Refine grid based on criteria computed using functor
     /// 
-    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, threshold: f64) -> Vec<usize>;
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, options: RefinementOptions) -> Vec<usize>;
 
     ///
     /// Returns the number of grid points that can be refined.
     ///      
-    fn get_num_refinable_points(&self, storage: &SparseGridData<D>) -> usize;
+    fn get_num_refinable_points(&self, storage: &SparseGridData<D>, level_limits: Option<Vec<u8>>) -> usize;
 
     ///
     /// Refine a grid point along a single direction
@@ -65,16 +88,38 @@ pub trait SparseGridRefinement<const D: usize, const DIM_OUT: usize>
     }
 }
 
-fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(storage: &SparseGridData<D>, operation: &mut Op)
+fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(storage: &SparseGridData<D>, operation: &mut Op, level_limits: Option<Vec<u8>>)
 {
+    let level_limits = if let Some(level_limits) = level_limits.as_ref()
+    {
+        if level_limits.len() != D
+        {
+            panic!("level limits must have length equal to D");
+        }
+        std::array::from_fn(|i| level_limits[i])
+    }
+    else
+    {
+        [u8::MAX; D]
+    };    
     for (seq, point) in storage.nodes().iter().enumerate()
     {
         let parent = point;
         let mut point = *point;
         for d in 0..D
         {               
+            if point.level[d] >= level_limits[d]
+            {
+                continue; // skip this point, it is too deep
+            }
+            if point.level[d] > 16
+            {
+                println!("how do we get here? level: {}, index: {}, point: {:?}", point.level[d], point.index[d], point);
+                panic!("level too high");
+            }
             let index = point.index[d];
             let level = point.level[d];
+            
             if level == 0
             {
                 point.level[d] = 1;
@@ -90,6 +135,7 @@ fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(
                 // check if left child exists
                 point.index[d] = 2 * index - 1;
                 point.level[d] = level + 1;
+
                 // Child doesn't exist. we can refine this node.
                 if !storage.contains(&point)
                 {
@@ -248,42 +294,50 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
         }
     }
 
-    fn refine_gridpoint(&self, storage: &mut SparseGridData<D>, index: usize) 
+    fn refine_gridpoint(&self, storage: &mut SparseGridData<D>, index: usize, level_limits: Option<Vec<u8>>) 
     {
+        let level_limits = level_limits.unwrap_or(vec![u8::MAX; D]);
         let point = storage[index];
+
         storage[index].set_is_leaf(false);
-        for d in 0..D
+        for dim in 0..D
         {
-            self.refine_1d(storage, point, d);
+            if point.level[dim] == level_limits[dim]
+            {
+                continue; // skip this dimension, it is too deep
+            }
+            self.refine_1d(storage, point, dim);
         }
     }
 }
 
 impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for BaseRefinement<D, DIM_OUT>
 {
-    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, threshold: f64) -> Vec<usize> {
+    fn refine(&self, storage: &mut SparseGridData<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], functor: &dyn RefinementFunctor<D, DIM_OUT>, options: RefinementOptions) -> Vec<usize> {
         let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
-        let error_estimate = functor.eval(alpha, values);
+       
+        let error_estimate =  functor.eval(alpha, values);        
         iterate_refinable_points(storage, &mut |(seq, _point)|
         {        
-            if error_estimate[seq] > threshold
+            if error_estimate[seq] > options.threshold
             {
                 refinable_nodes.push(seq);  
             }
            
-        });
+        }, options.level_limits.clone());
+        
         for seq in refinable_nodes
         {
-            self.refine_gridpoint(storage,seq);
+            self.refine_gridpoint(storage,seq, options.level_limits.clone());
         }
         (original_number..storage.len()).collect()
     }
 
-    fn get_num_refinable_points(&self, storage: &SparseGridData<D>) -> usize
+    fn get_num_refinable_points(&self, storage: &SparseGridData<D>, level_limits: Option<Vec<u8>>) -> usize
     {        
         let mut count = 0;
-        iterate_refinable_points(storage, &mut |_point| { count += 1; });        
+        iterate_refinable_points(storage, &mut |_point| { count += 1; }, level_limits);        
         count
     }
 

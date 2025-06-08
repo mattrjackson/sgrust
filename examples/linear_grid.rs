@@ -1,5 +1,5 @@
 
-use sgrust::{errors::SGError, grids::{linear_grid::LinearGrid, sparse_grid::SparseGrid}, refinement::surplus::SurplusRefinement, storage::linear_grid::BoundingBox};
+use sgrust::{algorithms::refinement::RefinementOptions, errors::SGError, grids::{linear_grid::LinearGrid, sparse_grid::SparseGrid}, refinement::surplus::SurplusRefinement, storage::linear_grid::BoundingBox};
 
 fn one_d()-> Result<(), SGError>
 {
@@ -20,7 +20,8 @@ fn one_d()-> Result<(), SGError>
     // Let's set our objective to be 1/10 of the current error.
     let refinement = SurplusRefinement;
     println!("Number of points: {}", grid.len());
-    grid.refine(&refinement, &f, error/10.0, 10);
+    let options = RefinementOptions::new(error * 0.1);
+    grid.refine(&refinement, &f, options, 10);
     println!("Number of points after refinement: {}", grid.len());
     error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);
@@ -51,7 +52,8 @@ fn two_d()-> Result<(), SGError>
     // Let's set our objective to be 1/10 of the current error.
     let refinement = SurplusRefinement;
     println!("Number of points: {}", grid.len());
-    grid.refine(&refinement, &f, error/10.0, 10);
+    let options = RefinementOptions::new(error * 0.1);
+    grid.refine(&refinement, &f, options.clone(), 10);
     println!("Number of points after refinement: {}", grid.len());
     error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);
@@ -84,16 +86,16 @@ fn six_d()-> Result<(), SGError>
         r
     };
 
-    grid.update_values(&f);
-
+    grid.update_values(&f);    
     // Compare the values...
     let x = [0.3, 0.1, 0.2, 0.1, 0.4, 0.7];
     let mut error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
+    let options = RefinementOptions::new(error * 0.01);
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);
     // Let's set our objective to be 1/100 of the current error.
     let refinement = SurplusRefinement;
     println!("Number of points: {}", grid.len());
-    grid.refine(&refinement, &f, error/100.0, 10);
+    grid.refine(&refinement, &f, options.clone(), 10);
     println!("Number of points after refinement: {}", grid.len());
     error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);
@@ -122,11 +124,12 @@ fn one_d_grid_with_bounding_box()-> Result<(), SGError>
     // Compare the values...
     let x = [3.0];
     let mut error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
+    let options = RefinementOptions::new(error * 0.001);
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);
     // Let's set our objective to be 1/1000 of the current error.
     let refinement = SurplusRefinement;
     println!("Number of points: {}", grid.len());
-    grid.refine(&refinement, &f, error/1000.0, 10);
+    grid.refine(&refinement, &f, options, 10);
     println!("Number of points after refinement: {}", grid.len());
     error = (grid.interpolate(x)?[0] - f(&x)[0]).abs();
     println!("x={:?}, calculated {}, expected {}. Error={error}", x, grid.interpolate(x)?[0], f(&x)[0]);

@@ -9,6 +9,18 @@
 ### Removed
 ### Fixed
 -->
+## [0.5.0] — 2025-06-08
+
+### Security
+### Added
+1. `RefinementMode` to allow switching between isotropic and anisotropic refinement. 
+2. `RefinementOptions` to store refinement options. This includes the refinement threshold, the `RefinementMode`, and an optional parameter to specify the max level limits.
+### Changed
+The refinement function now takes a `RefinementOptions` input rather than a single floating point threshold.
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.4.6] — 2025-05-20
 
 ### Security
