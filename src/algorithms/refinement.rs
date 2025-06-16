@@ -112,11 +112,6 @@ fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(
             {
                 continue; // skip this point, it is too deep
             }
-            if point.level[d] > 16
-            {
-                println!("how do we get here? level: {}, index: {}, point: {:?}", point.level[d], point.index[d], point);
-                panic!("level too high");
-            }
             let index = point.index[d];
             let level = point.level[d];
             

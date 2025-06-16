@@ -9,6 +9,18 @@
 ### Removed
 ### Fixed
 -->
+
+## [0.5.1] — 2025-06-15
+
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Removed debug section from `iterate_refinable_points` that prevented refinement above level 16.
+
+
 ## [0.5.0] — 2025-06-08
 
 ### Security
