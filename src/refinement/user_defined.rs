@@ -1,4 +1,4 @@
-use crate::algorithms::refinement::RefinementFunctor;
+use crate::{algorithms::refinement::RefinementFunctor, storage::linear_grid::PointIterator};
 
 ///
 /// A function that defines how refinement is performed.
@@ -15,7 +15,7 @@ pub struct UserDefinedRefinement<'a, const D: usize, const DIM_OUT: usize>
 
 impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for UserDefinedRefinement<'_, D, DIM_OUT>
 {
-    fn eval(&self, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64> {
+    fn eval(&self, _points: PointIterator<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64> {
         
         alpha.iter().zip(values).map(|(alpha_i, values_i)|
         {

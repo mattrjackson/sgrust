@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 
-use crate::storage::linear_grid::SparseGridData;
+use crate::storage::linear_grid::{PointIterator, SparseGridData};
 
 use super::refinement::RefinementFunctor;
 
@@ -8,7 +8,7 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut Sparse
 {
     let mut kept_points = IndexSet::default();
     let zero_index = storage.adjacency_data.zero_index;
-    let values = functor.eval(alpha, values);
+    let values = functor.eval(storage.points(), alpha, values);
     for (seq, (point, r)) in storage.nodes().iter().zip(values.into_iter()).enumerate()
     {
         if point.is_leaf() && seq != zero_index        

@@ -1,4 +1,4 @@
-use crate::storage::linear_grid::{GridPoint, SparseGridData};
+use crate::storage::linear_grid::{GridPoint, PointIterator, SparseGridData};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefinementMode
@@ -37,7 +37,7 @@ pub trait RefinementFunctor<const D: usize, const DIM_OUT: usize> : Send + Sync
     /// returns the error estimate at each node. A common choice is
     /// to just use the absolute value of the surplus.
     /// 
-    fn eval(&self, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64>;
+    fn eval(&self, points: PointIterator<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64>;
 
     ///
     /// Returns the maximum number of points to be refined. If
@@ -88,7 +88,7 @@ pub trait SparseGridRefinement<const D: usize, const DIM_OUT: usize>
     }
 }
 
-fn iterate_refinable_points<const D: usize, Op: FnMut((usize,  &GridPoint<D>))>(storage: &SparseGridData<D>, operation: &mut Op, level_limits: Option<Vec<u8>>)
+fn iterate_refinable_points<const D: usize, Op: FnMut((usize, &GridPoint<D>))>(storage: &SparseGridData<D>, operation: &mut Op, level_limits: Option<Vec<u8>>)
 {
     let level_limits = if let Some(level_limits) = level_limits.as_ref()
     {
@@ -312,7 +312,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridRefinement<D, DIM_OUT> for 
         let mut refinable_nodes = Vec::new();
         let original_number = storage.len();
        
-        let error_estimate =  functor.eval(alpha, values);        
+        let error_estimate =  functor.eval(storage.points(), alpha, values);        
         iterate_refinable_points(storage, &mut |(seq, _point)|
         {        
             if error_estimate[seq] > options.threshold

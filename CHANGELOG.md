@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.5.2] — 2025-06-17
+
+### Security
+### Added
+### Changed
+Added an additional parameter to the refinement function to pass in the grid points.
+### Deprecated
+### Removed
+### Fixed
+
+
 ## [0.5.1] — 2025-06-15
 
 ### Security

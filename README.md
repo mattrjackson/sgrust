@@ -4,7 +4,7 @@ Traditionally full grids are used for interpolation or integration of multidimen
 
 ## Usage:
 
-1. `LinearGrid`. This class utilizes linear basis functions, and supports interoplation, integration, as well as adaptive refinement and coarsening. See more details below...
+1. `LinearGrid`. This class utilizes linear basis functions, and supports interpolation, integration, as well as adaptive refinement and coarsening. See more details below...
 2. `CombinationGrid`.  This class currently is primarily useful for UQ applications (e.g. integration over global basis vectors), but supports Lagrange interpolation and integration based on Clenshaw Curtis or Gauss Patterson. The combination grid also allows tensor selection based on total polynomial exactness, as well as the level sum. The former can allow additional flexibility for the quadrature rules, and can result in more tensors being selected than the simple level sum approach leverages. 
 
 For `LinearGrid`, there are effectively two ways to handle updating values and refining the grid based upon them:
