@@ -1,6 +1,6 @@
 [package]
 name = "sgrust"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 license = "MIT"
 keywords = ["sparsegrid", "interpolation"]
@@ -8,36 +8,32 @@ description = "A sparse grid library written in Rust."
 repository = "https://github.com/mattrjackson/sgrust"
 
 [dependencies]
-bincode = {version = "2.0.1", features = ["serde"] }
-bitfield-struct = "0.10.0"
-indexmap = "2.7.0"
-kdtree = { version = "0.7.0" }
-lz4_flex = "0.11.3"
+bincode = { version="2.0.1", features = ["serde"] }
+bitfield-struct = "0.11.0"
+indexmap = "2.10.0"
+kdtree = "0.7.0"
+lz4_flex = "0.11.5"
 num-traits = "0.2.19"
-rayon = "1.10.0"
-rustc-hash = "2.0.0"
-rustfft = "6.2.0"
-serde = { version = "1.0.203", features = ["serde_derive"] }
-serde_with = "3.9.0"
-static_init = "1.0.3"
+rayon = {version = "1.10.0", optional = true }
+rustc-hash = "2.1.1"
+rustfft = "6.4.0"
+
+serde = {version ="1.0.219", features = ["derive"] }
+serde_with = {version = "3.14.0", features = ["macros"] }
+static_init = "1.0.4"
 
 [dev-dependencies]
-libm = "0.2.8"
+libm = "0.2.15"
 criterion = "0.5.1"
+
+[features]
+default = []
+
+rayon = ["dep:rayon"]
 
 [profile.test]
 opt-level = 3
 
-[profile.dev]
-opt-level = 3
-
 [profile.release]
-debug = false 
-
-[[bench]]
-name = "linear_grid"
-harness = false
-
-[[bench]]
-name = "combination_grid"
-harness = false
+opt-level = 3
+debug = true

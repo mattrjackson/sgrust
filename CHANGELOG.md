@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.6.0] — 2025-07-10
+
+### Security
+### Added
+Created vector-based data structures for `LinearGrid`. This is generally (much) easier to integrate with other languages than the const generics. Note that the dynamic `LinearGrid` is quite a bit slower than the const generic version. Will be working on closing the performance gap, but as things currently stand, generally seeing a 30-50% performance hit from the dynamic `LinearGrid` compared to the const generic variant.
+### Changed
+The current const-generic based `LinearGrid` has been moved under the `const-generic` module. The combination grid has been moved under the `dynamic` module.
+### Deprecated
+### Removed
+### Fixed
+
 ## [0.5.2] — 2025-06-17
 
 ### Security

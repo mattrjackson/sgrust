@@ -1,9 +1,4 @@
-use std::ops::AddAssign;
-
-use num_traits::Float;
 use static_init::dynamic;
-
-use crate::algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature};
 
 use super::base::Basis;
 
@@ -165,44 +160,4 @@ impl Basis for ClenshawCurtis
         }
     }
 
-}
-
-impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for ClenshawCurtis
-{
-    fn eval(&self, storage: &crate::storage::linear_grid::SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT] {
-        
-        let mut integral_component = [1.0; DIM_OUT];
-        let point = &storage[index];
-        let weight = self.integral(point.level[dim] as u32, point.index[dim]);
-        #[allow(clippy::needless_range_loop)]
-        for d in 0..DIM_OUT
-        {
-            integral_component[d] = weight;
-        }
-        integral_component
-    }
-}
-
-impl<T: Float + AddAssign,const D: usize, const DIM_OUT: usize>  IsotropicQuadrature<T, D, DIM_OUT> for ClenshawCurtis
-{}
-
-impl<const D: usize, const DIM_OUT: usize>  Quadrature<D, DIM_OUT> for ClenshawCurtis{}
-
-impl<const D: usize, const DIM_OUT: usize> BasisAndQuadrature<D, DIM_OUT> for ClenshawCurtis{}
-
-#[test]
-fn check_cc_nodes_and_weights()
-{
-    let cc = ClenshawCurtis;
-    
-    for level in 0..=CC_MAX_LEVEL
-    {
-        let weights = crate::tables::clenshaw_curtis_table::cc_weights(level);
-        for i in 0..cc.num_nodes(level) as u32
-        {
-            let integral = cc.integral(level, i);
-            let weight = weights[i as usize];
-            assert_eq!(integral, weight);
-        }
-    } 
 }

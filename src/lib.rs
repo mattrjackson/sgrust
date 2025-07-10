@@ -1,11 +1,7 @@
-pub mod algorithms;
+pub mod adjacency_data;
 pub mod basis;
+pub mod const_generic;
+pub mod dynamic;
 pub mod errors;
-pub mod generators;
-pub mod grids;
-pub mod iterators;
-pub mod refinement;
-pub mod rules;
-pub mod storage;
-mod tables;
-mod utilities;
+pub mod tables;
+pub mod utilities;

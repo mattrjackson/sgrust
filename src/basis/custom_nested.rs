@@ -1,8 +1,6 @@
-use std::ops::{AddAssign, Deref, Index};
+use std::ops::{Deref, Index};
 
-use num_traits::Float;
 use serde::{Deserialize, Serialize};
-use crate::algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature};
 
 use super::base::Basis;
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -120,25 +118,3 @@ impl Basis for CustomNested
 
 }
 
-impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for CustomNested
-{
-    fn eval(&self, storage: &crate::storage::linear_grid::SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT] {
-        
-        let mut integral_component = [1.0; DIM_OUT];
-        let point = &storage[index];
-        let weight = self.integral(point.level[dim] as u32, point.index[dim]);
-        #[allow(clippy::needless_range_loop)]
-        for d in 0..DIM_OUT
-        {
-            integral_component[d] = weight;
-        }
-        integral_component
-    }
-}
-
-impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize>  IsotropicQuadrature<T, D, DIM_OUT> for CustomNested
-{}
-
-impl<const D: usize, const DIM_OUT: usize>  Quadrature<D, DIM_OUT> for CustomNested{}
-
-impl<const D: usize, const DIM_OUT: usize> BasisAndQuadrature<D, DIM_OUT> for CustomNested{}

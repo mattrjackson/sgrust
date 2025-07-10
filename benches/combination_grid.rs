@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use sgrust::{basis::global::{GlobalBasis, GlobalBasisType}, grids::combination_grid::{CombinationSparseGrid, GenerationOptions, TensorSelectionStrategy}};
+use sgrust::{basis::global::{GlobalBasis, GlobalBasisType}, dynamic::grids::combination_grid::{CombinationSparseGrid, GenerationOptions, TensorSelectionStrategy}};
 
 fn build_grid() -> (CombinationSparseGrid, Vec<f64>)
 {

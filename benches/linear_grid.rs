@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use sgrust::{errors::SGError, grids::{immutable_linear_grid::ImmutableLinearGrid, linear_grid::LinearGrid, sparse_grid::SparseGrid}};
+use sgrust::{errors::SGError, const_generic::grids::linear_grid::LinearGrid};
 
 fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
 {
@@ -45,12 +45,14 @@ fn build_twelve_d_grid() -> Result<LinearGrid<12,1>, SGError>
     Ok(grid)
 }
 
-
 fn six_d(grid: &LinearGrid<6,1>)-> Result<(), SGError>
 {
     // Compare the values...
-    let x = [[0.3, 0.1, 0.2, 0.1, 0.4, 0.7]; 1000];
-    let _value = grid.interpolate_batch(&x);
+    let x = [0.3, 0.1, 0.2, 0.1, 0.4, 0.7];
+    for _ in 0..1000
+    {
+        let _value = grid.interpolate(x);
+    }
     
     Ok(())
 }
@@ -60,7 +62,7 @@ fn run_six_d(c: &mut Criterion)
     let grid = build_six_d_grid().unwrap();
     c.bench_function("6d", |b|b.iter(||six_d(&grid).unwrap()));
 }
-
+#[cfg(feature="rayon")]
 fn six_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 6,1>)-> Result<(), SGError>
 {
     // Compare the values...
@@ -69,7 +71,7 @@ fn six_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 6,1>)-> Result<(), SGEr
     
     Ok(())
 }
-
+#[cfg(feature="rayon")]
 fn twelve_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 12,1>)-> Result<(), SGError>
 {
     // Compare the values...
@@ -78,17 +80,20 @@ fn twelve_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 12,1>)-> Result<(), 
     
     Ok(())
 }
-
+#[cfg(feature="rayon")]
 fn run_six_d_immutable_graph(c: &mut Criterion)
 {
     let grid: ImmutableLinearGrid<f32, 6, 1> = build_six_d_grid().unwrap().into();
     c.bench_function("6d_immmutable_grid", |b|b.iter(||six_d_immutable_graph(&grid).unwrap()));
 }
-
+#[cfg(feature="rayon")]
 fn run_twelve_d_immutable_graph(c: &mut Criterion)
 {
     let grid: ImmutableLinearGrid<f32, 12, 1> = build_twelve_d_grid().unwrap().into();
     c.bench_function("12d", |b|b.iter(||twelve_d_immutable_graph(&grid).unwrap()));
 }
+criterion_group!(benches_serial, run_six_d);
+#[cfg(feature="rayon")]
 criterion_group!(benches, run_six_d, run_six_d_immutable_graph, run_twelve_d_immutable_graph);
-criterion_main!(benches);
+
+criterion_main!(benches_serial);

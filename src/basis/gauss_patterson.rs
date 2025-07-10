@@ -1,9 +1,4 @@
-use std::ops::AddAssign;
-
-use num_traits::Float;
 use static_init::dynamic;
-
-use crate::{algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature}, tables};
 
 use super::base::Basis;
 
@@ -16,7 +11,7 @@ impl GaussPattersonCache
 {
     pub fn new(max_level: u32) -> Self
     {
-        use tables::gauss_patterson_table::*;        
+        use crate::tables::gauss_patterson_table::*;        
         let mut nodes = Vec::new();
         let mut weights = Vec::new();
         for level in 0..=max_level
@@ -165,29 +160,6 @@ impl Basis for GaussPatterson
     }
 
 }
-
-impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for GaussPatterson
-{
-    fn eval(&self, storage: &crate::storage::linear_grid::SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT] {
-        
-        let mut integral_component = [1.0; DIM_OUT];
-        let point = &storage[index];
-        let weight = self.integral(point.level[dim] as u32, point.index[dim]);        
-        #[allow(clippy::needless_range_loop)]
-        for d in 0..DIM_OUT
-        {
-            integral_component[d] = weight;
-        }
-        integral_component
-    }
-}
-
-impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize>  IsotropicQuadrature<T, D, DIM_OUT> for GaussPatterson
-{}
-
-impl<const D: usize, const DIM_OUT: usize>  Quadrature<D, DIM_OUT> for GaussPatterson{}
-
-impl<const D: usize, const DIM_OUT: usize> BasisAndQuadrature<D, DIM_OUT> for GaussPatterson{}
 
 #[test]
 fn print_gauss_patterson_nodes_and_weights()

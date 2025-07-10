@@ -2,7 +2,7 @@ use std::ops::AddAssign;
 
 use num_traits::Float;
 
-use crate::{algorithms::integration::{AnisotropicQuadrature, BasisAndQuadrature, IsotropicQuadrature, Quadrature}, storage::linear_grid::SparseGridData};
+use crate::const_generic::storage::SparseGridData;
 
 use super::base::Basis;
 
@@ -47,21 +47,17 @@ impl Basis for LinearBasis
     }
     #[inline]
     fn eval(&self, level: u32, index: u32, x: f64) -> f64 {
-        if level == 0
-        {        
-            if index == 0 
-            {
-                1.0 - x
-            } 
-            else 
-            {
-                x
-            }
-        } 
-        else 
-        {
-            0.0_f64.max(1.0-f64::abs((1 << level) as f64 * x - index as f64 ))
-        }    
+        if level == 0 {
+            // Avoid branching on index by using a simple formula
+            // index is 0 or 1, so: if 0 => 1.0 - x, if 1 => x
+            (1.0 - x) * (1 - index) as f64 + x * index as f64
+        } else {
+            // Avoid repeated computation and function calls
+            let scale = (1 << level) as f64;
+            let center = index as f64 / scale;
+            let dist = (x - center).abs();
+            (1.0 - dist * scale).max(0.0)
+        }
     }
 
     fn eval_deriv(&self, _level: u32, _index: u32, _x: f64) -> f64 {
@@ -122,13 +118,14 @@ impl Basis for LinearBasis
             r
         }
     }
+   
     
 }
 
-impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize> IsotropicQuadrature<T, D, DIM_OUT> for LinearBasis
+impl LinearBasis
 {
     #[inline]
-    fn eval(&self, storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
+    pub fn eval_point<const D: usize, const DIM_OUT: usize, T: Float + AddAssign>(storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {        
         let volume = T::from(storage.bounding_box.volume()).unwrap();
         let mut integral = [T::zero(); DIM_OUT];
@@ -160,35 +157,37 @@ impl<T: Float + AddAssign, const D: usize, const DIM_OUT: usize> IsotropicQuadra
         }
         integral
     }
-}
 
-
-
-impl<const D: usize, const DIM_OUT: usize> AnisotropicQuadrature<D, DIM_OUT> for LinearBasis
-{
     #[inline]
-    fn eval(&self, storage: &SparseGridData<D>, index: usize, dim: usize) -> [f64; DIM_OUT]
-    {   
-        let mut integral_component = [1.0; DIM_OUT];
-        let point = &storage[index];
-        let mut weight = 1.0 / (1 << point.level[dim]) as f64;
-        if !point.is_inner_point()
+    pub fn eval_point_dynamic<T: Float + AddAssign>(storage: &crate::dynamic::storage::SparseGridData, alpha: &[T], integral: &mut [T])
+    {        
+        integral.fill(T::zero());
+        let volume = T::from(storage.bounding_box.volume()).unwrap();
+        for (i, point) in storage.nodes().enumerate()
         {
-            let mut num_boundaries = 0;
-            if point.index[dim] == 0 || (1 << point.level[dim]) == point.index[dim] as usize
+            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64).unwrap();
+            if !point.flags.is_inner()
             {
-                num_boundaries += 1;
+                let mut num_boundaries = 0;
+                for d in 0..storage.num_inputs
+                {
+                    if point.index[d] == 0 || (1 << point.level[d] as usize) == point.index[d] as usize
+                    {
+                        num_boundaries += 1;
+                    }
+                }
+                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64).unwrap();
+            }                
+            #[allow(clippy::needless_range_loop)]
+            for dim in 0..storage.num_outputs
+            {
+                integral[dim] += alpha[i*storage.num_outputs+dim] * pow;
             }
-            weight /= (1 << num_boundaries) as f64;
-        }        
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..DIM_OUT
-        {
-            integral_component[i] = weight;
         }
-        integral_component
+        #[allow(clippy::needless_range_loop)]
+        for dim in 0..storage.num_outputs
+        {
+            integral[dim] = integral[dim] * volume;
+        }
     }
 }
-
-impl<const D: usize, const DIM_OUT: usize>  Quadrature<D, DIM_OUT> for LinearBasis{}
-impl<const D: usize, const DIM_OUT: usize>  BasisAndQuadrature<D, DIM_OUT> for LinearBasis{}
