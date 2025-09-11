@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.6.1] — 2025-09-11
+
+### Security
+### Added
+Added `write_buffer` method to serialize a grid to buffer.
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Fixed interpolation bug for a level 0 grid with a single point.
+
 ## [0.6.0] — 2025-07-10
 
 ### Security

@@ -91,6 +91,10 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     #[inline]
     pub fn interpolate_unchecked(&self, x: [f64; D]) -> Result<[T; DIM_OUT], SGError>
     {
+        if self.values.len() == 1
+        {
+            return Ok(self.values[0]);
+        }
         use crate::const_generic::algorithms::interpolation::InterpolationOperation;        
         let iterator = &mut AdjacencyGridIterator::new( &self.storage);
         let op = InterpolationOperation(self.storage.has_boundary, BasisEvaluation(&self.storage, [LinearBasis; D]));      
@@ -155,6 +159,15 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
+    }
+
+    ///
+    /// Write grid to buffer
+    /// 
+    pub fn write_buffer(&self) -> Result<Vec<u8>, SGError>
+    {     
+        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
+        Ok(buffer)
     }
     ///
     /// Reads full grid information from buffer

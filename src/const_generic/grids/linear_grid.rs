@@ -144,6 +144,11 @@ impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
         Ok(Self(SparseGridBase::<D, DIM_OUT>::read_buffer(buffer)?))
     }    
 
+    pub fn write_buffer(&self) -> Result<Vec<u8>, SGError> where Self: Sized {
+        self.base().write_buffer()
+    }    
+
+
      /// Get the surplus coefficients for this grid.
     pub fn alpha(&self) -> &[[f64; DIM_OUT]]
     {

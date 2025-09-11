@@ -153,6 +153,10 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn interpolate_unchecked(&self, x: [f64; D]) -> Result<[f64; DIM_OUT], SGError>
     {
         use crate::const_generic::algorithms::interpolation::InterpolationOperation;
+        if self.values.len() == 1
+        {
+            return Ok(self.values[0]);
+        }
         let iterator = &mut AdjacencyGridIterator::new(&self.storage);
         let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, [LinearBasis; D]));      
         op.interpolate(x, &self.alpha, iterator)       
@@ -391,6 +395,14 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         Ok(())
     }
 
+    ///
+    /// Write grid to buffer
+    /// 
+    pub fn write_buffer(&self) -> Result<Vec<u8>, SGError>
+    {     
+        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
+        Ok(buffer)
+    }
     
     ///
     /// Reads full grid information (including maps and iterator data).

@@ -363,6 +363,7 @@ impl<const D: usize> SparseGridData<D>
 
     fn update_leaves(&mut self)
     {
+    
         #[allow(clippy::needless_range_loop)]
         for i in 0..self.len()
         {
@@ -382,17 +383,35 @@ impl<const D: usize> SparseGridData<D>
                     }                
                 }
                 else
-                {                    
-                    // don't remove boundary nodes that are used by other nodes...
-                    if self.map.contains_key(&point.root(dim).into()) 
-                    {
-                        is_leaf = false;
-                        break;
-                    }
+                // don't remove boundary nodes (eventually update this to only remove non-essential boundary nodes)
+                {
+                    is_leaf = false;
+                    break;
                 }
             }                
             point.flags.set_is_leaf(is_leaf);            
-        }        
+        }       
+        // for i in 0..self.len()
+        // {
+        //     let point = self.nodes[i];
+        //     if point.is_leaf() && point.is_inner_point()
+        //     {
+        //         continue;
+        //     }
+        //     for dim in 0..D
+        //     {                
+        //         let llz = point.left_level_zero(dim);
+        //         let rlz = point.right_level_zero(dim);
+        //         if let Some(&index) = self.map.get(&llz.into())
+        //         {
+        //             self.nodes[index].set_is_leaf(false);
+        //         }
+        //         if let Some(&index) = self.map.get(&rlz.into())
+        //         {
+        //             self.nodes[index].set_is_leaf(false);
+        //         }      
+        //     }          
+        // }
     }
 
     ///
