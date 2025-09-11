@@ -10,6 +10,20 @@
 ### Fixed
 -->
 
+## [0.7.0] — 2026-01-18
+
+### Security
+### Added
+Added `write_buffer` method to serialize a grid to buffer.
+Added point as an input to `UserRefinementFunction`, which permits advanced spatial refinement.
+### Changed
+The `save` methods are have been renamed to `write` to be consistent with the `read` methods.
+Serialization methods (`read`, `read_buffer`, `write`, `write_buffer`) now takes a `SerializationFormat` enum as an argument. This can be used to write grids in a variety of formats, including JSON, rkyv, and bitcode.
+### Deprecated
+### Removed
+### Fixed
+Fixed interpolation bug for a level 0 grid with a single point.
+
 ## [0.6.0] — 2025-07-10
 
 ### Security

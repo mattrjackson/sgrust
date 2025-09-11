@@ -1,4 +1,4 @@
-use num_traits::Float;
+use crate::utilities::float::Float;
 
 use crate::{basis::base::Basis, const_generic::iterators::grid_iterator::GridIteratorT};
 use super::{basis_evaluation::BasisEvaluation, basis_evalution_with_boundary::eval_boundary};
@@ -19,7 +19,7 @@ impl<const D: usize, const DIM_OUT: usize, BASIS: Basis> InterpolationOperation<
                 let mut result = [T::zero(); DIM_OUT];                            
                 iterator.reset_to_level_zero();
                 let xscaled = self.1.0.bounding_box.to_unit_coordinate(&x);
-                eval_boundary(self.1.0, &self.1.1, &xscaled, 0, T::from(1.0).unwrap(), iterator, alpha, &mut result);    
+                eval_boundary(self.1.0, &self.1.1, &xscaled, 0, T::from(1.0), iterator, alpha, &mut result)?;    
                 Ok(result)
                 },
             false =>  self.1.eval(x, alpha, iterator),

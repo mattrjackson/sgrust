@@ -1,4 +1,4 @@
-use crate::dynamic::storage::{GridPoint, SparseGridData};
+use crate::{dynamic::storage::{GridPoint, SparseGridData}, errors::SGError};
 
 pub trait Generator : Default
 {
@@ -8,7 +8,7 @@ pub trait Generator : Default
     /// Tensor-Product Approximation Spaces".
     /// 
     #[allow(non_snake_case)]
-    fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>);
+    fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>;
     ///
     /// Generates a regular sparse grid of level levels, without boundaries
     /// where dimensions are splitted into a groups with only certain number
@@ -17,22 +17,22 @@ pub trait Generator : Default
     /// Tensor-Product Approximation Spaces".
     /// 
     #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>);
+    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>) -> Result<(), SGError>;
     ///
     /// Generates a full grid of 2^@level tensors, without boundaries
     /// 
-    fn full(&self, storage: &mut SparseGridData, level: usize);
+    fn full(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError>;
 
     ///
     /// Generates a full grid of level @level, with boundary grid points.
     /// 
-    fn full_with_boundaries(&self, storage: &mut SparseGridData, level: usize);
+    fn full_with_boundaries(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError>;
 
     /// Generates a regular sparse grid of level levels, with boundaries.
     /// For details about T, See pages 8-9 of Griebel and Knapek's "Optimized 
     /// Tensor-Product Approximation Spaces".
     #[allow(non_snake_case)]
-    fn regular_with_boundaries(&self, storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>);
+    fn regular_with_boundaries(&self, storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) -> Result<(), SGError>;
 
 }
 
@@ -40,7 +40,7 @@ pub trait Generator : Default
 /// Generate a regular sparse grid iteratively without grid points on the boundary.
 /// 
 #[allow(non_snake_case)]
-fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T :Option<f64>)
+fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>
 {
     let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1; storage.num_inputs], false);
     let t = T.unwrap_or(0.0); // default to zero (sparse grid)
@@ -86,7 +86,7 @@ fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T
                     }
                     else
                     {
-                        storage.update(point.clone(), g);
+                        storage.update(point.clone(), g)?;
                         first = false;
                     }
                 }
@@ -94,16 +94,17 @@ fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T
             }
         }
     }
+    Ok(())
 }
 
 #[allow(non_snake_case)]
-pub fn regular(storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) 
+pub fn regular(storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>
 {
     regular_generator_iterative(storage, levels, T)
 }
 
 #[allow(non_snake_case)]
-pub fn cliques(storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T: Option<f64>) {
+pub fn cliques(storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T: Option<f64>) -> Result<(), SGError>{
     let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1; storage.num_inputs], false);
     let t = T.unwrap_or(0.0); // default to zero (sparse grid)
     let n = levels[0] as u32;
@@ -165,7 +166,7 @@ pub fn cliques(storage: &mut SparseGridData, levels: &[usize], clique_size: usiz
                     }
                     else
                     {
-                        storage.update(point.clone(), g);
+                        storage.update(point.clone(), g)?;
                         first = false;
                     }
                 }
@@ -173,9 +174,10 @@ pub fn cliques(storage: &mut SparseGridData, levels: &[usize], clique_size: usiz
             }
         }
     }
+    Ok(())
 }
 
-fn full_iterative(storage: &mut SparseGridData, level: usize)
+fn full_iterative(storage: &mut SparseGridData, level: usize) -> Result<(), SGError>
 {
     let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1;storage.num_inputs], false);   
     let n = level as u32;
@@ -214,44 +216,47 @@ fn full_iterative(storage: &mut SparseGridData, level: usize)
                     }
                     else
                     {
-                        storage.update(point.clone(), g);
+                        storage.update(point.clone(), g)?;
                         first = false;
                     }
                 }
             }
         }
     }
+    Ok(())
 }
 
-pub fn full(storage: &mut SparseGridData, level: usize) {
-    full_iterative(storage, level);
+pub fn full(storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
+    full_iterative(storage, level)
 }
 
 pub fn anisotropic_full(_storage: &mut SparseGridData, _level: &&[usize]) {
     todo!()
 }
 
-pub fn full_with_boundaries(storage: &mut SparseGridData, level: usize) {
-    full_with_boundaries_iter(storage, level);
+pub fn full_with_boundaries(storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
+    full_with_boundaries_iter(storage, level)?;
     storage.has_boundary = true;
+    Ok(())
 }
 
 #[allow(non_snake_case)]
-pub fn regular_with_boundaries(storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) {
+pub fn regular_with_boundaries(storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) -> Result<(), SGError> {
     let boundary_level = boundary_level.unwrap_or(1);
     if boundary_level > 0
     {
-        regular_with_boundaries_iter(storage, levels, Some(boundary_level), T);
+        regular_with_boundaries_iter(storage, levels, Some(boundary_level), T)?;
         storage.has_boundary = true;
     }   
     else
     {
         todo!("Need to implement recursive generator");
     } 
+    Ok(())
 }
 
 #[allow(non_snake_case)]
-fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>)
+fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) -> Result<(), SGError>
 {
     let boundary_level = boundary_level.unwrap_or(1) as u32;
     let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1;storage.num_inputs], false);
@@ -309,7 +314,7 @@ fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], 
                 point.level[d as usize] = 0;
                 point.index[d as usize] = 0;
                 point.set_is_leaf(false);
-                storage.update(point.clone(), g);
+                storage.update(point.clone(), g)?;
                 point.index[d as usize] = 1;
                 storage.insert_point(point.clone());
                 first_point = false;
@@ -355,7 +360,7 @@ fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], 
                     }
                     else
                     {
-                        storage.update(point.clone(), g);
+                        storage.update(point.clone(), g)?;
                         first_point = false;
                     }
                 }
@@ -363,9 +368,10 @@ fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], 
             }
         }
     }
+    Ok(())
 }
 
-fn full_with_boundaries_iter(storage: &mut SparseGridData, level: usize)
+fn full_with_boundaries_iter(storage: &mut SparseGridData, level: usize) -> Result<(), SGError>
 {
     let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1;storage.num_inputs], false);
     let n = level as u32;
@@ -417,7 +423,7 @@ fn full_with_boundaries_iter(storage: &mut SparseGridData, level: usize)
                     point.level[d as usize] = 0;
                     point.index[d as usize] = 0;
                     point.set_is_leaf(false);
-                    storage.update(point.clone(), g);
+                    storage.update(point.clone(), g)?;
                     point.index[d as usize] = 1;
                     storage.insert_point(point.clone());
                 }
@@ -431,30 +437,31 @@ fn full_with_boundaries_iter(storage: &mut SparseGridData, level: usize)
             }   
         }
     }
+    Ok(())
 }
 
 #[test]
 fn test_regular()
 {
     let mut storage = SparseGridData::new(2, 1);   
-    regular(&mut storage, &vec![3,3], Some(0.0));
+    regular(&mut storage, &vec![3,3], Some(0.0)).expect("Could not generate grid");
     assert_eq!(storage.len(), 17);
 }
 #[test]
 fn test_truncated_boundaries_1d()
 {
     let mut storage = SparseGridData::new(1, 1);
-    regular_with_boundaries(&mut storage,&vec! [2], Some(1), None);
+    regular_with_boundaries(&mut storage,&vec! [2], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage.len(), 5);
 }
 #[test]
 fn test_truncated_boundaries_2d()
 {
     let mut storage = SparseGridData::new(2,1);
-    regular_with_boundaries(&mut storage, &vec![2,2], Some(1), None);
+    regular_with_boundaries(&mut storage, &vec![2,2], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage.len(), 21);
     let mut storage2 = SparseGridData::new(2,1);
-    regular_with_boundaries(&mut storage2, &vec![3,3], Some(1), None);
+    regular_with_boundaries(&mut storage2, &vec![3,3], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage2.len(), 49);   
     assert!(storage2.contains(&GridPoint::new(&[1,1], &[1,1], false)));
     assert!(storage2.contains(&GridPoint::new(&[1,2], &[1,1], false)));

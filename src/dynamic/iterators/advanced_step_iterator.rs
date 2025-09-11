@@ -25,7 +25,7 @@ impl AdvancedStepIterator
     pub fn new(max_levels: &[u32], grid_type: GridType, basis: Vec<GlobalBasis>, mut selection_strategy: TensorSelectionStrategy, exactness_bound: u32) -> Self
     {
         let ndim = max_levels.len();
-        let level_bound = if grid_type == GridType::Sparse {  *max_levels.iter().max().unwrap() } else { max_levels.iter().sum() };        
+        let level_bound = if grid_type == GridType::Sparse {  *max_levels.iter().max().unwrap_or(&0) } else { max_levels.iter().sum() };        
         // For a full grid, there is no point in using an exactness test
         selection_strategy = if grid_type == GridType::Full { TensorSelectionStrategy::Level } else { selection_strategy };
         

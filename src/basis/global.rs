@@ -1,19 +1,25 @@
 use serde::{Deserialize, Serialize};
 
+use crate::basis::gauss_legendre::GaussLegendre;
+
 use super::{base::Basis, clenshaw_curtis::ClenshawCurtis, custom_nested::CustomNested, gauss_patterson::GaussPatterson, linear::LinearBasis};
 
 #[derive(Serialize, Deserialize)]
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[repr(u8)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub enum GlobalBasisType
 {
     Linear = 0,
     ClenshawCurtis = 1,
     GaussPatterson = 2,
     CustomBasis = 3,
+    GaussLegendre = 4,
 }
 
 #[derive(Serialize, Deserialize)]
 #[derive(Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct GlobalBasis
 {
     pub basis_type: GlobalBasisType,
@@ -40,6 +46,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.eval(level, index, x),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.eval(level, index, x),
             GlobalBasisType::GaussPatterson => GaussPatterson.eval(level, index, x),
+            GlobalBasisType::GaussLegendre => GaussLegendre.eval(level, index, x),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.eval(level, index, x)
@@ -57,6 +64,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.eval_deriv(level, index, x),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.eval_deriv(level, index, x),
             GlobalBasisType::GaussPatterson => GaussPatterson.eval_deriv(level, index, x),
+            GlobalBasisType::GaussLegendre => GaussLegendre.eval_deriv(level, index, x),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.eval_deriv(level, index, x)
@@ -74,6 +82,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.degree(),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.degree(),
             GlobalBasisType::GaussPatterson => GaussPatterson.degree(),
+            GlobalBasisType::GaussLegendre => GaussLegendre.degree(),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.degree()
@@ -91,6 +100,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.integral(level, index),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.integral(level, index),
             GlobalBasisType::GaussPatterson => GaussPatterson.integral(level, index),
+            GlobalBasisType::GaussLegendre => GaussLegendre.integral(level, index),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.integral(level, index)
@@ -108,6 +118,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.basis_type(),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.basis_type(),
             GlobalBasisType::GaussPatterson => GaussPatterson.basis_type(),
+            GlobalBasisType::GaussLegendre => GaussLegendre.basis_type(),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.basis_type()
@@ -125,6 +136,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.node(level, index),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.node(level, index),
             GlobalBasisType::GaussPatterson => GaussPatterson.node(level, index),
+            GlobalBasisType::GaussLegendre => GaussLegendre.node(level, index),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.node(level, index)
@@ -142,6 +154,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.num_nodes(level),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.num_nodes(level),
             GlobalBasisType::GaussPatterson => GaussPatterson.num_nodes(level),
+            GlobalBasisType::GaussLegendre => GaussLegendre.num_nodes(level),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.num_nodes(level)
@@ -159,6 +172,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.get_point(level, index),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.get_point(level, index),
             GlobalBasisType::GaussPatterson => GaussPatterson.get_point(level, index),
+            GlobalBasisType::GaussLegendre => GaussLegendre.get_point(level, index),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.get_point(level, index)
@@ -176,6 +190,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.weights(level),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.weights(level),
             GlobalBasisType::GaussPatterson => GaussPatterson.weights(level),
+            GlobalBasisType::GaussLegendre => GaussLegendre.weights(level),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.weights(level)
@@ -193,6 +208,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.nodes(level),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.nodes(level),
             GlobalBasisType::GaussPatterson => GaussPatterson.nodes(level),
+            GlobalBasisType::GaussLegendre => GaussLegendre.nodes(level),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.nodes(level)
@@ -210,6 +226,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.quadrature_exactness(level),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.quadrature_exactness(level),
             GlobalBasisType::GaussPatterson => GaussPatterson.quadrature_exactness(level),
+            GlobalBasisType::GaussLegendre => GaussLegendre.quadrature_exactness(level),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.quadrature_exactness(level)
@@ -227,6 +244,7 @@ impl Basis for GlobalBasis
             GlobalBasisType::Linear => LinearBasis.interpolation_exactness(level),
             GlobalBasisType::ClenshawCurtis => ClenshawCurtis.interpolation_exactness(level),
             GlobalBasisType::GaussPatterson => GaussPatterson.interpolation_exactness(level),
+            GlobalBasisType::GaussLegendre => GaussLegendre.interpolation_exactness(level),
             GlobalBasisType::CustomBasis => if let Some(rule) = &self.custom_rule
             {
                 rule.interpolation_exactness(level)

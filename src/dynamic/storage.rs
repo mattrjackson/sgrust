@@ -3,12 +3,12 @@ use rustc_hash::{FxHashMap, FxHasher};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use bitfield_struct::bitfield;
-use crate::{dynamic::iterators::dynamic_grid_iterator::{DynamicHashMapGridIterator, GridIteratorT}};
+use crate::{dynamic::iterators::dynamic_grid_iterator::{DynamicHashMapGridIterator, GridIteratorT}, errors::SGError};
 
 use crate::adjacency_data::{NodeAdjacency, NodeAdjacencyData};
 
 #[bitfield(u8, new=false)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct GridPointFlags
 {
     pub is_leaf: bool,
@@ -16,6 +16,29 @@ pub struct GridPointFlags
     #[bits(6)]
     pub _empty: u8
 }
+
+#[cfg(feature = "rkyv")]
+impl rkyv::Archive for GridPointFlags {
+    type Archived = u8;
+    type Resolver = ();
+
+    fn resolve(&self, _resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        out.write(self.0);
+    }
+}
+#[cfg(feature = "rkyv")]
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for GridPointFlags {
+    fn serialize(&self, _serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        Ok(())
+    }
+}
+#[cfg(feature = "rkyv")]
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<GridPointFlags, D> for u8 {
+    fn deserialize(&self, _deserializer: &mut D) -> Result<GridPointFlags, D::Error> {
+        Ok(GridPointFlags(*self))
+    }
+}
+
 impl GridPointFlags
 {
     pub fn new(level: &[u8], is_leaf: bool) -> Self
@@ -33,6 +56,7 @@ impl GridPointFlags
 }
 #[serde_as]
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct GridPoint
 {    
     pub level: Vec<u8>,    
@@ -106,11 +130,11 @@ impl GridPoint
     #[inline]
     pub fn level_max(&self) -> u8
     {
-        *self.level.iter().max().unwrap()
+        *self.level.iter().max().unwrap_or(&0)
     }
     pub fn level_min(&self) -> u8
     {
-        *self.level.iter().min().unwrap()
+        *self.level.iter().min().unwrap_or(&0)
     }
     
     pub fn left_child(&self, dim: usize) -> GridPoint
@@ -218,11 +242,11 @@ impl GridPointRef<'_>
     #[inline]
     pub fn level_max(&self) -> u8
     {
-        *self.level.iter().max().unwrap()
+        *self.level.iter().max().unwrap_or(&0)
     }
     pub fn level_min(&self) -> u8
     {
-        *self.level.iter().min().unwrap()
+        *self.level.iter().min().unwrap_or(&0)
     }
 }
 
@@ -293,6 +317,7 @@ pub struct GridPointMutRef<'a> {
     pub(crate) flags: &'a mut GridPointFlags
 }
 #[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct BoundingBox
 {
     pub lower: Vec<f64>,    
@@ -381,6 +406,7 @@ impl BoundingBox
 
 
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct SparseGridData
 {
     pub bounding_box: BoundingBox,
@@ -493,13 +519,13 @@ impl SparseGridData
     #[inline]
     pub fn level_max(&self, seq: usize) -> u8
     {
-        *self.level[seq*self.num_inputs..(seq+1)*self.num_inputs].iter().max().unwrap()
+        *self.level[seq*self.num_inputs..(seq+1)*self.num_inputs].iter().max().unwrap_or(&0)
     }
 
     #[inline]
     pub fn level_min(&self, seq: usize) -> u8
     {
-        *self.level[seq*self.num_inputs..(seq+1)*self.num_inputs].iter().min().unwrap()
+        *self.level[seq*self.num_inputs..(seq+1)*self.num_inputs].iter().min().unwrap_or(&0)
     }
     
     pub fn left_child(&self, seq: usize, dim: usize) -> GridPoint
@@ -545,15 +571,16 @@ impl SparseGridData
     }
    
     #[inline]
-    pub fn update(&mut self, mut point: GridPoint, index: usize)
+    pub fn update(&mut self, mut point: GridPoint, index: usize) -> Result<(), SGError>
     {
         // make sure our is_inner flag is up-to-date...
         point.flags.update_is_inner(&point.level);
         let key: u64 = (&point).into();
         self.map.insert(key, index);
-        self.index.chunks_exact_mut(self.num_inputs).nth(index).unwrap().copy_from_slice(&point.index);
-        self.level.chunks_exact_mut(self.num_inputs).nth(index).unwrap().copy_from_slice(&point.level);   
+        self.index.chunks_exact_mut(self.num_inputs).nth(index).ok_or_else(||SGError::InvalidIndex)?.copy_from_slice(&point.index);
+        self.level.chunks_exact_mut(self.num_inputs).nth(index).ok_or_else(||SGError::InvalidIndex)?.copy_from_slice(&point.level);   
         self.flags[index] = point.flags;
+        Ok(())
     }
     ///
     /// Return the nodes in the grid...
@@ -628,33 +655,30 @@ impl SparseGridData
         #[allow(clippy::needless_range_loop)]
         for i in 0..self.len()
         {
-            //let point = &mut list[i];
-            let mut is_leaf = true;
             let point = self.point(i);
+            let mut is_leaf = true;
+            
             for dim in 0..self.num_inputs
             {                
-                if self.level[i*self.num_inputs + dim] > 0
-                {                    
+                if point.level[dim] > 0
+                {   
                     // Check if this point has any children. If not it is a leaf.
-                    if self.contains(&point.left_child(dim)) ||
-                        self.contains(&point.right_child(dim)) 
+                    if self.map.contains_key(&point.left_child(dim).into()) ||
+                        self.map.contains_key(&point.right_child(dim).into()) 
                     {
                         is_leaf = false;
                         break; 
                     }                
                 }
                 else
-                {                    
-                    // don't remove boundary nodes that are used by other nodes...
-                    if self.contains(&point.root(dim)) 
-                    {
-                        is_leaf = false;
-                        break;
-                    }
+                // don't remove boundary nodes (eventually update this to only remove non-essential boundary nodes)
+                {
+                    is_leaf = false;
+                    break;
                 }
             }                
-            self.flags[i].set_is_leaf(is_leaf);
-        }
+            self.flags[i].set_is_leaf(is_leaf);          
+        }       
     }
      pub fn generate_adjacency_data(&mut self)
     {
@@ -717,10 +741,8 @@ impl SparseGridData
             iterator.left_child(dim);
             if let Some(lc_index) = iterator.index()
             {
-                // assign left child
-                array[active_index].inner.set_has_left_child(true);
-                array[active_index].inner.set_down(lc_index as i64 - seq as i64);
-                array[active_index].inner.set_has_child(true);
+                // assign left child - down_left offset
+                array[active_index].inner.set_down_left(lc_index as i64 - seq as i64);
             }
             
             iterator.set_index(node_index.clone());
@@ -728,12 +750,8 @@ impl SparseGridData
             iterator.right_child(dim);
             if let Some(rc_index) = iterator.index()
             {
-                // assign right child
-                array[active_index].inner.set_has_right_child(true);
-                // this potentially overwrites the down index if left child exists,
-                // but that's ok. We just need one of them, or to know neither exist.
-                array[active_index].inner.set_down(rc_index as i64 - seq as i64);
-                array[active_index].inner.set_has_child(true);
+                // assign right child - down_right offset
+                array[active_index].inner.set_down_right(rc_index as i64 - seq as i64);
             } 
             iterator.reset_to_left_level_zero(dim);            
             // Handle left level zero
@@ -847,7 +865,7 @@ impl<'a> Iterator for NodeIterator<'a> {
 }
 
 pub struct PointIterator<'a> {
-    storage: &'a SparseGridData,
+    pub storage: &'a SparseGridData,
     current_seq: usize,
 }
 impl<'a> PointIterator<'a>

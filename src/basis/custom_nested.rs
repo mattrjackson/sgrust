@@ -1,9 +1,10 @@
-use std::ops::{Deref, Index};
+ use std::ops::{Deref, Index};
 
 use serde::{Deserialize, Serialize};
 
 use super::base::Basis;
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct NodesForLevel(Vec<f64>);
 
 impl Index<u32> for NodesForLevel
@@ -24,6 +25,7 @@ impl Deref for NodesForLevel
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct WeightsForLevel(Vec<f64>);
 
 impl Index<u32> for WeightsForLevel
@@ -45,6 +47,7 @@ impl Deref for WeightsForLevel
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct CustomNested
 {
     nodes: Vec<NodesForLevel>,

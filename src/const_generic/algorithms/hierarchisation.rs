@@ -1,10 +1,10 @@
-use crate::const_generic::{algorithms::sweep::SweepFunction, iterators::grid_iterator::{HashMapGridIterator, GridIteratorT}, storage::SparseGridData};
+use crate::{const_generic::{algorithms::sweep::SweepFunction, iterators::grid_iterator::{GridIteratorT, HashMapGridIterator}, storage::SparseGridData}, errors::SGError};
 
 
 pub trait HierarchisationOperation<const D: usize, const DIM_OUT: usize> : Copy
 {
-    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>); 
-    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>); 
+    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError>; 
+    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError>; 
 }
 
 pub struct LinearHierarchisation<const D: usize, const DIM_OUT: usize>;
@@ -39,8 +39,9 @@ impl<const D: usize, const DIM_OUT: usize> LinearHierarchisation<D, DIM_OUT>
 
 impl< const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearHierarchisation<D, DIM_OUT>
 {
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError>{
         Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT]);
+        Ok(())
     }
 }
 
@@ -50,13 +51,13 @@ pub struct LinearBoundaryHierarchisation<const D: usize, const DIM_OUT: usize>(L
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearBoundaryHierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError> {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
-        let seq_left = iterator.seq().unwrap();
+        let seq_left = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
         let left_boundary = values[seq_left];
         iterator.reset_to_right_level_zero(dimension);
-        let seq_right = iterator.seq().unwrap();       
+        let seq_right = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;       
         let right_boundary = values[seq_right];
         if !iterator.is_leaf()
         {
@@ -67,6 +68,7 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
             }
             iterator.reset_to_left_level_zero(dimension);
         }
+        Ok(())
     }
 }
 
@@ -105,8 +107,9 @@ impl<const D: usize, const DIM_OUT: usize> LinearDehierarchisation<D, DIM_OUT>
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearDehierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError>{
         Self::recurse(values, iterator, dimension, [0.0; DIM_OUT], [0.0; DIM_OUT]);
+        Ok(())
     }
 }
 
@@ -115,13 +118,13 @@ pub struct LinearBoundaryDehierarchisation<const D: usize, const DIM_OUT: usize>
 impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_OUT]> for LinearBoundaryDehierarchisation<D, DIM_OUT>
 {
     #[inline]
-    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) {
+    fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError> {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
-        let seq_left = iterator.seq().unwrap();
+        let seq_left = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
         let left_boundary = values[seq_left];
         iterator.reset_to_right_level_zero(dimension);
-        let seq_right = iterator.seq().unwrap();
+        let seq_right = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
         let right_boundary = values[seq_right];
         if !iterator.is_leaf()
         {
@@ -132,6 +135,7 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
             }
             iterator.reset_to_left_level_zero(dimension);
         }
+        Ok(())
     }
 }
 
@@ -141,22 +145,24 @@ pub struct LinearHierarchisationOperation<const D: usize, const DIM_OUT: usize>;
 impl<const D: usize, const DIM_OUT: usize> HierarchisationOperation<D, DIM_OUT> for LinearHierarchisationOperation<D, DIM_OUT>
 {        
     #[inline]
-    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) {
+    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError>{
         use crate::const_generic::algorithms::sweep;
         let mut func = LinearHierarchisation;
         for d in 0..D
         {
             sweep::sweep_1d_in_place(&mut func, storage, node_values, d);
         }
+        Ok(())
     }
     #[inline]
-    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) {
+    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError>{
         use crate::const_generic::algorithms::sweep;
         let mut func = LinearDehierarchisation;
         for d in 0..D
         {
             sweep::sweep_1d_in_place(&mut func, storage, alpha, d);
         }
+        Ok(())
     }
 }
 
@@ -166,21 +172,23 @@ pub struct LinearBoundaryHierarchisationOperation<const D: usize, const DIM_OUT:
 impl<const D: usize, const DIM_OUT: usize> HierarchisationOperation<D, DIM_OUT> for LinearBoundaryHierarchisationOperation<D, DIM_OUT>
 {    
     #[inline]
-    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) {
+    fn hierarchize(&self, node_values: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError> {
         use crate::const_generic::algorithms::sweep;
         let mut func = LinearBoundaryHierarchisation(LinearHierarchisation);
         for d in 0..D
         {
-            sweep::sweep_1d_boundary_in_place(&mut func, storage, node_values, d);
+            sweep::sweep_1d_boundary_in_place(&mut func, storage, node_values, d)?;
         }
+        Ok(())
     }
     #[inline]
-    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) {
+    fn dehierarchize(&self, alpha: &mut [[f64; DIM_OUT]], storage: &SparseGridData<D>) -> Result<(), SGError> {
         use crate::const_generic::algorithms::sweep;
         let mut func = LinearDehierarchisation;
         for d in 0..D
         {
             sweep::sweep_1d_in_place(&mut func, storage, alpha, d);
         }
+        Ok(())
     }
 }

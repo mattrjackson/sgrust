@@ -1,4 +1,4 @@
-use num_traits::Float;
+use crate::utilities::float::Float;
 use crate::{basis::base::Basis, const_generic::{iterators::grid_iterator::GridIteratorT, storage::SparseGridData}, errors::SGError};
 
 
@@ -11,8 +11,8 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
         &self.1[dim]
     }
     #[allow(clippy::too_many_arguments)]
-    fn recursive_eval<Iterator: GridIteratorT<D>, T: Float +std::ops::AddAssign> (&self, point: [f64; D], current_dim: usize, 
-        value: T, iterator: &mut Iterator, source: [u32; D], alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
+    fn recursive_eval<Iterator: GridIteratorT<D>, T: Float> (&self, point: [f64; D], current_dim: usize, 
+        value: T, iterator: &mut Iterator, source: [u32; D], alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT]) -> Result<(), SGError>
     {
         const MAX_LEVEL: u32 = 31;
         let idx = source[current_dim];
@@ -22,10 +22,10 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
         loop
         {
             let index = iterator.point().index[current_dim];
-            let val = T::from(self.basis(current_dim).eval(level, index, point[current_dim])).unwrap() * value;            
+            let val = T::from(self.basis(current_dim).eval(level, index, point[current_dim])) * value;            
             if current_dim == D - 1
             {
-                let node_index = iterator.index().unwrap();
+                let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
                 #[allow(clippy::needless_range_loop)]
                 for d in 0..DIM_OUT
                 {
@@ -34,7 +34,7 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
             }
             else 
             {
-                self.recursive_eval(point, current_dim + 1, val, iterator, source, alpha, result);                
+                self.recursive_eval(point, current_dim + 1, val, iterator, source, alpha, result)?;                
             }
             if iterator.is_leaf()
             {
@@ -60,6 +60,7 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
             }            
         }        
         iterator.reset_to_level_one(current_dim);
+        Ok(())
     }
 
     pub fn eval<Iterator: GridIteratorT<D>, T: Float +std::ops::AddAssign>(&self, point: [f64; D], alpha: &[[T; DIM_OUT]], 
@@ -86,7 +87,7 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
             }
         }
         let mut result = [T::zero(); DIM_OUT];
-        self.recursive_eval(unit_coord, 0,  T::from(1.0).unwrap(), iterator, source, alpha, &mut result);
+        self.recursive_eval(unit_coord, 0,  T::from(1.0), iterator, source, alpha, &mut result)?;
         Ok(result)
     }
 }

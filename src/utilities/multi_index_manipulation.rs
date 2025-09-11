@@ -1,15 +1,17 @@
 use std::cmp::Ordering;
 
+use crate::errors::SGError;
+
 ///
 /// Sot level sets lexographically.. Used by `weight_modifiers`.
 /// 
-fn sort_level_sets(level_sets: &[u32], ndim: usize) -> (Vec<Vec<u32>>, Vec<Vec<u32>>) {
+fn sort_level_sets(level_sets: &[u32], ndim: usize) -> Result<(Vec<Vec<u32>>, Vec<Vec<u32>>), SGError> {
     let num_tensors = level_sets.len() / ndim;
     let num_levels = level_sets
         .chunks(ndim)
-        .map(|idx| *idx.iter().max().unwrap())
+        .map(|idx| *idx.iter().max().unwrap_or(&0))
         .max()
-        .unwrap()
+        .unwrap_or(0)
         + 1;
 
     // Initialize maps and lines
@@ -27,8 +29,8 @@ fn sort_level_sets(level_sets: &[u32], ndim: usize) -> (Vec<Vec<u32>>, Vec<Vec<u
     for dim in 0..ndim {
         // Sort tensor indices lexicographically, ignoring the active `dim` dimension
         sorted_maps[dim].sort_by(|&a, &b| {
-            let idx_a = &level_sets.chunks(ndim).nth(a as usize).unwrap();
-            let idx_b = &level_sets.chunks(ndim).nth(b as usize).unwrap();
+            let idx_a = level_sets.chunks(ndim).nth(a as usize).unwrap_or_default();
+            let idx_b = level_sets.chunks(ndim).nth(b as usize).unwrap_or_default();
 
             idx_a.iter()
                 .zip(idx_b.iter())
@@ -42,11 +44,11 @@ fn sort_level_sets(level_sets: &[u32], ndim: usize) -> (Vec<Vec<u32>>, Vec<Vec<u
         });
 
         // Identify boundary positions (segments) where levels differ outside `dim`
-        let mut current_idx = level_sets.chunks(ndim).nth(sorted_maps[dim][0] as usize).unwrap();
+        let mut current_idx = level_sets.chunks(ndim).nth(sorted_maps[dim][0] as usize).ok_or_else(||SGError::InvalidIndex)?;
         lines_1d[dim].push(0);
 
         for (i, &tensor) in sorted_maps[dim].iter().enumerate().skip(1) {
-            let next_idx = level_sets.chunks(ndim).nth(tensor as usize).unwrap();
+            let next_idx = level_sets.chunks(ndim).nth(tensor as usize).ok_or_else(||SGError::InvalidIndex)?;
             if !match_outside_dim(dim, current_idx, next_idx) {
                 lines_1d[dim].push(i as u32);
                 current_idx = next_idx;
@@ -56,21 +58,21 @@ fn sort_level_sets(level_sets: &[u32], ndim: usize) -> (Vec<Vec<u32>>, Vec<Vec<u
         lines_1d[dim].push(num_tensors as u32);
     }
 
-    (sorted_maps, lines_1d)
+    Ok((sorted_maps, lines_1d))
 }
 
 ///
 /// Compute tensor weight modifiers. Approach adapted from TASMANIAN. 
 /// 
-pub fn weight_modifiers(level_sets: &[u32], ndim: usize) -> Vec<f64> {
+pub fn weight_modifiers(level_sets: &[u32], ndim: usize) -> Result<Vec<f64>, SGError> {
     let num_tensors = level_sets.len() / ndim;
 
     if ndim == 1 {
-        return vec![1.0; num_tensors];
+        return Ok(vec![1.0; num_tensors]);
     }
 
     let mut weights = vec![0.0; num_tensors];
-    let (sorted_maps, lines_1d) = sort_level_sets(level_sets, ndim);
+    let (sorted_maps, lines_1d) = sort_level_sets(level_sets, ndim)?;
 
     // Step 1: Initialize weights for the last dimension
     let last_dim_lines = &lines_1d[ndim - 1];
@@ -93,5 +95,5 @@ pub fn weight_modifiers(level_sets: &[u32], ndim: usize) -> Vec<f64> {
             }
         }
     }
-    weights
+    Ok(weights)
 }

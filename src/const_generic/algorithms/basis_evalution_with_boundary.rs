@@ -1,20 +1,20 @@
-use num_traits::Float;
+use crate::errors::SGError;
+use crate::utilities::float::Float;
 
 use crate::{basis::base::Basis, const_generic::{iterators::grid_iterator::GridIteratorT, storage::SparseGridData}};
-
 #[inline]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign, Iterator: GridIteratorT<D>>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
-    dim: usize, value: T, iterator: &mut Iterator, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT])
+    dim: usize, value: T, iterator: &mut Iterator, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT]) -> Result<(), SGError>
 {
     let mut level = 0;
     loop
     {
-        let node_index = iterator.index().unwrap();
+        let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
         let work_index = storage[node_index].index[dim];        
         if level > 0
         {
-            let new_value = T::from(basis[dim].eval(level, work_index, x[dim])).unwrap();
+            let new_value = T::from(basis[dim].eval(level, work_index, x[dim]));
             if dim == D - 1
             {
                 #[allow(clippy::needless_range_loop)]
@@ -25,7 +25,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             }
             else 
             {
-                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result);    
+                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result)?;    
             }
         }
         else
@@ -35,8 +35,8 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
             if iterator.reset_to_left_level_zero(dim)
             {
-                let seq_l = iterator.index().unwrap();
-                let new_value_l = T::from(basis[dim].eval(0, 0, x[dim])).unwrap();
+                let seq_l = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let new_value_l = T::from(basis[dim].eval(0, 0, x[dim]));
                 if dim == D - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -47,14 +47,14 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
                 }
                 else 
                 {
-                    eval_boundary(storage, basis, x, dim + 1, value * new_value_l, iterator, alpha, result);
+                    eval_boundary(storage, basis, x, dim + 1, value * new_value_l, iterator, alpha, result)?;
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_right_level_zero(dim)
             {
-                let seq_r = iterator.index().unwrap();
-                let new_value_r = T::from(basis[dim].eval(0, 1, x[dim])).unwrap();
+                let seq_r = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let new_value_r = T::from(basis[dim].eval(0, 1, x[dim]));
                 if dim == D - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -65,7 +65,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
                 }
                 else 
                 {
-                    eval_boundary(storage, basis, x, dim + 1, value * new_value_r, iterator, alpha, result);
+                    eval_boundary(storage, basis, x, dim + 1, value * new_value_r, iterator, alpha, result)?;
                 }
             }
         }
@@ -109,5 +109,6 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
         }
         level += 1;
     }
-    iterator.reset_to_left_level_zero(dim);    
+    iterator.reset_to_left_level_zero(dim); 
+    Ok(())   
 }

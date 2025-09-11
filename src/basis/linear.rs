@@ -1,6 +1,6 @@
 use std::ops::AddAssign;
 
-use num_traits::Float;
+use crate::utilities::float::Float;
 
 use crate::const_generic::storage::SparseGridData;
 
@@ -125,13 +125,13 @@ impl Basis for LinearBasis
 impl LinearBasis
 {
     #[inline]
-    pub fn eval_point<const D: usize, const DIM_OUT: usize, T: Float + AddAssign>(storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
+    pub fn eval_point<const D: usize, const DIM_OUT: usize, T: Float>(storage: &SparseGridData<D>, alpha: &[[T; DIM_OUT]]) -> [T; DIM_OUT]
     {        
-        let volume = T::from(storage.bounding_box.volume()).unwrap();
+        let volume = T::from(storage.bounding_box.volume());
         let mut integral = [T::zero(); DIM_OUT];
         for (i, point) in storage.nodes().iter().enumerate()
         {
-            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64).unwrap();
+            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64);
             if !point.is_inner_point()
             {
                 let mut num_boundaries = 0;
@@ -142,7 +142,7 @@ impl LinearBasis
                         num_boundaries += 1;
                     }
                 }
-                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64).unwrap();
+                pow *= T::from(1.0 / (1 << num_boundaries) as f64);
             }                
             #[allow(clippy::needless_range_loop)]
             for dim in 0..DIM_OUT
@@ -162,10 +162,10 @@ impl LinearBasis
     pub fn eval_point_dynamic<T: Float + AddAssign>(storage: &crate::dynamic::storage::SparseGridData, alpha: &[T], integral: &mut [T])
     {        
         integral.fill(T::zero());
-        let volume = T::from(storage.bounding_box.volume()).unwrap();
+        let volume = T::from(storage.bounding_box.volume());
         for (i, point) in storage.nodes().enumerate()
         {
-            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64).unwrap();
+            let mut pow = T::from( 1.0 / (1 << point.level_sum())  as f64);
             if !point.flags.is_inner()
             {
                 let mut num_boundaries = 0;
@@ -176,7 +176,7 @@ impl LinearBasis
                         num_boundaries += 1;
                     }
                 }
-                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64).unwrap();
+                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64);
             }                
             #[allow(clippy::needless_range_loop)]
             for dim in 0..storage.num_outputs

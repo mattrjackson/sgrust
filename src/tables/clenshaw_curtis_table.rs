@@ -26,7 +26,7 @@ pub(crate) fn cc_weights(level: u32) -> Vec<f64> {
     let mut v0: Vec<f64> = n_vals.iter()
         .map(|&i| 2.0 / (i * (i - 2.0)))
         .collect();
-    v0.push(1.0 / n_vals.last().unwrap());
+    v0.push(1.0 / n_vals[n_vals.len()-1]);
     v0.extend(vec![0.0; m]);
 
     let mut v2 = vec![0.0; v0.len()-1];

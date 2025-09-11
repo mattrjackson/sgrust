@@ -3,6 +3,7 @@ use crate::{basis::base::Basis, dynamic::{algorithms::lagrange::{lagrange_coeffs
 use crate::basis::global::GlobalBasis;
 use kdtree::KdTree;
 use kdtree::distance::squared_euclidean;
+use ndarray::{ArrayView1, ArrayView2};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +29,7 @@ fn cartesian_product(bounds: &[u32]) -> Vec<u32>
 }
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub enum TensorSelectionStrategy
 {    
     /// Tensors selected based on sum of levels across the dimensions.
@@ -40,6 +42,7 @@ pub enum TensorSelectionStrategy
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct GenerationOptions
 {
     /// Tensor Selection Strategy
@@ -51,6 +54,7 @@ pub struct GenerationOptions
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct DynamicBoundingBox
 {
     pub lower: Vec<f64>,
@@ -123,6 +127,7 @@ impl DynamicBoundingBox
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct NodesAndCoefficientsForLevel
 {
     pub level: u32,
@@ -131,6 +136,7 @@ pub struct NodesAndCoefficientsForLevel
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct FullGrid
 {
     pub level: Vec<u32>,    
@@ -255,7 +261,7 @@ impl FullGrid
             {
                 y[i] += combined_weight* values[i] * self.weight;
             });
-        }       
+        }
     }
 }
 
@@ -267,6 +273,7 @@ impl FullGrid
 /// TASMANIAN).
 /// 
 #[derive(Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct CombinationSparseGrid
 {
     bounding_box: Option<DynamicBoundingBox>,
@@ -373,7 +380,7 @@ impl CombinationSparseGrid
             TensorSelectionStrategy::Level => u32::MAX,
             TensorSelectionStrategy::QuadratureExactness => 
             {
-                let max_exactness = self.basis.iter().zip(&generation_parameters.level_limits).
+                let max_exactness = self.basis.iter().zip(&generation_parameters.level_limits).                
                 max_by(|a,b|a.0.quadrature_exactness(a.1 - 1).cmp(&b.0.quadrature_exactness(b.1 - 1))).unwrap();
                 max_exactness.0.quadrature_exactness(max_exactness.1 - 1) + 1
             },
@@ -386,7 +393,7 @@ impl CombinationSparseGrid
         };
         let indices: Vec<_> = if self.ndim == 1 { generation_parameters.level_limits.clone() } else { AdvancedStepIterator::new(&generation_parameters.level_limits, grid_type, 
             self.basis.clone(), generation_parameters.tensor_strategy,  generation_parameters.exactness_limit.unwrap_or(exactness_bound)).flatten().collect() };
-        let weights = crate::utilities::multi_index_manipulation::weight_modifiers(&indices, self.ndim);        
+        let weights = crate::utilities::multi_index_manipulation::weight_modifiers(&indices, self.ndim)?;        
         for (level_set, weight) in indices.chunks_exact(self.ndim).zip(weights)
         {
             // Skip if weight is zero or we have already added this set
@@ -502,6 +509,35 @@ impl CombinationSparseGrid
     } 
 
     ///
+    /// Compute integral over grid. Values must be in column major format...
+    /// 
+    pub fn integral_fast(&self, values: &[f64], num_outputs: usize) -> Vec<f64>
+    {
+        
+        if num_outputs == 1
+        {
+            let weights = ArrayView1::from(&self.qweight);
+            let values = ArrayView1::from(&values);    
+            return vec![weights.dot(&values)];
+        }
+        let weights = ArrayView1::from(&self.qweight);
+        let values = ArrayView2::from_shape((self.len(), num_outputs), &values).unwrap();
+           
+        let product = weights.dot(&values);        
+        let mut y = Vec::from(product.as_slice().unwrap());       
+        if let Some(bbox) = &self.bounding_box
+        {
+            let volume = bbox.volume();
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..num_outputs
+            {
+                y[i] *= volume;
+            }
+        }
+        y
+    } 
+
+    ///
     /// Interpolate on grid using previously computed `values`
     /// 
     pub fn interpolate(&self, x: &[f64], values: &[f64], num_outputs: usize) -> Vec<f64>
@@ -518,6 +554,7 @@ impl CombinationSparseGrid
             let grid = self.grids.last().unwrap();
             let lweights = grid.lweights.last().unwrap();
             let weights = lagrange_weights(x[0],&lweights.coefficients, &self.basis[0].nodes(grid.level[0]));
+            
             for (&weight, value) in weights.iter().zip(values.chunks_exact(num_outputs))
             {                   
                 for i in 0..num_outputs
@@ -643,12 +680,73 @@ fn test_combination_grid()
     use crate::basis::global::GlobalBasisType;
     let mut grid = CombinationSparseGrid::new(2, vec![GlobalBasis{basis_type: GlobalBasisType::ClenshawCurtis, custom_rule: None}; 2]);
     let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::Level, level_limits: vec![3,3], ..Default::default()};
+    grid.full_grid( options.clone()).unwrap();
+    let mut values = Vec::with_capacity(grid.nodes.len() / 2 );
+    for x in grid.nodes.chunks_exact(2)
+    {                
+        values.push(x[0] * x[0] + x[1]*x[1]);
+    } 
+    assert!(grid.len() == options.level_limits.iter().map(|&l| (1 << l) + 1).product::<usize>());
+    println!("integral={}", grid.integral(&values, 1)[0]);
+}
+
+
+#[test]
+fn test_combination_grid_gauss_legendre()
+{
+    use crate::basis::global::GlobalBasisType;
+    let mut grid = CombinationSparseGrid::new(2, vec![GlobalBasis{basis_type: GlobalBasisType::GaussLegendre, custom_rule: None}; 2]);
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::Level, level_limits: vec![10,10], ..Default::default()};
+    grid.full_grid( options.clone()).unwrap();
+    let mut values = Vec::with_capacity(grid.nodes.len() / 2 );
+    for x in grid.nodes.chunks_exact(2)
+    {                
+        values.push(x[0] * x[0] + x[1]*x[1]);
+    } 
+    assert!(grid.len() == 100);
+    println!("integral={}", grid.integral(&values, 1)[0]);
+}
+#[test]
+fn test_combination_grid_integral_standard()
+{
+    use crate::basis::global::GlobalBasisType;
+    let mut grid = CombinationSparseGrid::new(2, vec![GlobalBasis{basis_type: GlobalBasisType::ClenshawCurtis, custom_rule: None}; 2]);
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::Level, level_limits: vec![3,3], ..Default::default()};
     grid.full_grid( options).unwrap();
     let mut values = Vec::with_capacity(grid.nodes.len() / 2 );
     for x in grid.nodes.chunks_exact(2)
     {                
         values.push(x[0] * x[0] + x[1]*x[1]);
     } 
+    let t1 = std::time::Instant::now();
+    for _ in 0..1e6 as usize
+    {
+        let _ = grid.integral(&values, 1)[0];
+    }
+    println!("1e5 interpolation took {} msec", std::time::Instant::now().duration_since(t1).as_millis());
+    println!("integral={}", grid.integral(&values, 1)[0]);
+}
+
+
+#[test]
+fn test_combination_grid_integral_ndarray()
+{
+    use crate::basis::global::GlobalBasisType;
+    let mut grid = CombinationSparseGrid::new(2, vec![GlobalBasis{basis_type: GlobalBasisType::ClenshawCurtis, custom_rule: None}; 2]);
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::Level, level_limits: vec![3,3], ..Default::default()};
+    grid.full_grid( options).unwrap();
+    let mut values = vec![0.0; grid.len()];
+    for (i,x) in grid.nodes.chunks_exact(2).enumerate()
+    {   
+         values[i] = x[0] * x[0] + x[1]*x[1];
+        
+    } 
+    let t1 = std::time::Instant::now();
+    for _ in 0..1e6 as usize
+    {
+        let _ = grid.integral_fast(&values, 1)[0];
+    }
+    println!("1e5 interpolation took {} msec", std::time::Instant::now().duration_since(t1).as_millis());
     println!("integral={}", grid.integral(&values, 1)[0]);
 }
 
@@ -666,10 +764,37 @@ fn test_1d()
         values.push(x[0] * x[0]);
     } 
     println!("integral={}", grid.integral(&values, 1)[0]);
+    let t1 = std::time::Instant::now();
     for _ in 0..1e6 as usize
     {
         let _ = grid.interpolate(&[0.2], &values, 1)[0];
     }
+    println!("1e5 interpolation took {} msec", std::time::Instant::now().duration_since(t1).as_millis());
+    println!("interpolated value @0.2={}", grid.interpolate(&[0.2], &values, 1)[0]);
+    assert!((1.0-grid.interpolate(&[0.2], &values, 1)[0] / (0.04)).abs() < 1e-12);
+}
+
+#[test]
+fn test_1d_gauss_legendre()
+{
+    use crate::basis::global::GlobalBasisType;
+    let ndim = 1;
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::InterpolationExactness, level_limits: vec![10], ..Default::default()};
+    let mut grid = CombinationSparseGrid::new(1, vec![GlobalBasis{basis_type: GlobalBasisType::GaussLegendre, custom_rule: None}; 1]);
+    grid.sparse_grid(options).unwrap();
+    let mut values = Vec::with_capacity(grid.nodes.len() / ndim );
+    for x in grid.nodes.chunks_exact(ndim)
+    {                
+        values.push(x[0] * x[0]);
+    } 
+    println!("integral={}", grid.integral(&values, 1)[0]);
+    let t1 = std::time::Instant::now();
+    for _ in 0..1e6 as usize
+    {
+        let _ = grid.interpolate(&[0.2], &values, 1)[0];
+    }
+    assert!(grid.len() == 10);
+    println!("1e5 interpolation took {} msec", std::time::Instant::now().duration_since(t1).as_millis());
     println!("interpolated value @0.2={}", grid.interpolate(&[0.2], &values, 1)[0]);
     assert!((1.0-grid.interpolate(&[0.2], &values, 1)[0] / (0.04)).abs() < 1e-12);
 }
@@ -698,7 +823,23 @@ fn test_2d()
     println!("{}",grid.interpolate(&[0.2, 0.2], &values, 1)[0] );
     assert!((1.0-grid.interpolate(&[0.2, 0.2], &values, 1)[0] / (0.08)).abs() < 1e-12);
 }
-
+#[test]
+fn integral_2d()
+{
+    use crate::basis::global::GlobalBasisType;
+    let mut grid = CombinationSparseGrid::new(2, vec![GlobalBasis{basis_type: GlobalBasisType::GaussPatterson, custom_rule: None}; 2]);
+    let bbox = DynamicBoundingBox::new(&[-5.0,-5.0], &[5.0,5.0]);
+    let options = GenerationOptions{tensor_strategy: TensorSelectionStrategy::QuadratureExactness, level_limits: vec![3;2], exactness_limit: Some(12), ..Default::default()};
+    grid.sparse_grid(options).unwrap();
+    *grid.bounding_box_mut() = Some(bbox);
+    let mut values = Vec::with_capacity(grid.nodes.len() / 2 );
+    for x in grid.nodes().chunks_exact(2)
+    {                
+        values.push(x[0] * x[0] + x[1]*x[1]);
+    } 
+    println!("nodes={}", grid.len());
+    println!("integral={}", grid.integral(&values, 1)[0]);
+}
 #[test]
 fn integral_2d_bbox()
 {

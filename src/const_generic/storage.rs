@@ -8,13 +8,36 @@ use crate::const_generic::iterators::grid_iterator::{GridIteratorT, HashMapGridI
 use crate::adjacency_data::{NodeAdjacency, NodeAdjacencyData};
 
 #[bitfield(u8, new=false)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct GridPointFlags
 {
     pub is_leaf: bool,
     pub is_inner: bool,
     #[bits(6)]
     pub _empty: u8
+}
+
+// rkyv implementations for GridPointFlags (bitfield type)
+#[cfg(feature = "rkyv")]
+impl rkyv::Archive for GridPointFlags {
+    type Archived = u8;
+    type Resolver = ();
+
+    fn resolve(&self, _resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        out.write(self.0);
+    }
+}
+#[cfg(feature = "rkyv")]
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for GridPointFlags {
+    fn serialize(&self, _serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        Ok(())
+    }
+}
+#[cfg(feature = "rkyv")]
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<GridPointFlags, D> for u8 {
+    fn deserialize(&self, _deserializer: &mut D) -> Result<GridPointFlags, D::Error> {
+        Ok(GridPointFlags(*self))
+    }
 }
 impl GridPointFlags
 {
@@ -33,6 +56,7 @@ impl GridPointFlags
 }
 #[serde_as]
 #[derive(Copy, Clone, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct GridPoint<const D: usize>
 {
     #[serde_as(as = "[_; D]")]
@@ -108,11 +132,11 @@ impl<const D: usize> GridPoint<D>
     #[inline]
     pub fn level_max(&self) -> u8
     {
-        *self.level.iter().max().unwrap()
+        self.level.iter().copied().max().unwrap_or(0)
     }
     pub fn level_min(&self) -> u8
     {
-        *self.level.iter().min().unwrap()
+        self.level.iter().copied().min().unwrap_or(0)
     }
     
     pub fn left_child(&self, dim: usize) -> GridPoint<D>
@@ -191,6 +215,7 @@ impl<const D: usize> From<GridPoint<D>> for u64
 
 #[serde_as]
 #[derive(Copy, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct BoundingBox<const D: usize>
 {
     #[serde_as(as = "[_; D]")]
@@ -363,6 +388,7 @@ impl<const D: usize> SparseGridData<D>
 
     fn update_leaves(&mut self)
     {
+    
         #[allow(clippy::needless_range_loop)]
         for i in 0..self.len()
         {
@@ -382,17 +408,35 @@ impl<const D: usize> SparseGridData<D>
                     }                
                 }
                 else
-                {                    
-                    // don't remove boundary nodes that are used by other nodes...
-                    if self.map.contains_key(&point.root(dim).into()) 
-                    {
-                        is_leaf = false;
-                        break;
-                    }
+                // don't remove boundary nodes (eventually update this to only remove non-essential boundary nodes)
+                {
+                    is_leaf = false;
+                    break;
                 }
             }                
             point.flags.set_is_leaf(is_leaf);            
-        }        
+        }       
+        // for i in 0..self.len()
+        // {
+        //     let point = self.nodes[i];
+        //     if point.is_leaf() && point.is_inner_point()
+        //     {
+        //         continue;
+        //     }
+        //     for dim in 0..D
+        //     {                
+        //         let llz = point.left_level_zero(dim);
+        //         let rlz = point.right_level_zero(dim);
+        //         if let Some(&index) = self.map.get(&llz.into())
+        //         {
+        //             self.nodes[index].set_is_leaf(false);
+        //         }
+        //         if let Some(&index) = self.map.get(&rlz.into())
+        //         {
+        //             self.nodes[index].set_is_leaf(false);
+        //         }      
+        //     }          
+        // }
     }
 
     ///
@@ -426,6 +470,7 @@ impl<const D: usize> SparseGridData<D>
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct SparseGridData<const D: usize>
 {
     pub(crate) bounding_box: BoundingBox<D>,
@@ -535,10 +580,8 @@ impl<const D: usize> SparseGridData<D>
             iterator.left_child(dim);
             if let Some(lc_index) = iterator.index()
             {
-                // assign left child
-                array[active_index].inner.set_has_left_child(true);
-                array[active_index].inner.set_down(lc_index as i64 - seq as i64);
-                array[active_index].inner.set_has_child(true);
+                // assign left child - down_left offset
+                array[active_index].inner.set_down_left(lc_index as i64 - seq as i64);
             }
             
             iterator.set_index(node_index);
@@ -546,12 +589,8 @@ impl<const D: usize> SparseGridData<D>
             iterator.right_child(dim);
             if let Some(rc_index) = iterator.index()
             {
-                // assign right child
-                array[active_index].inner.set_has_right_child(true);
-                // this potentially overwrites the down index if left child exists,
-                // but that's ok. We just need one of them, or to know neither exist.
-                array[active_index].inner.set_down(rc_index as i64 - seq as i64);
-                array[active_index].inner.set_has_child(true);
+                // assign right child - down_right offset
+                array[active_index].inner.set_down_right(rc_index as i64 - seq as i64);
             } 
             iterator.reset_to_left_level_zero(dim);            
             // Handle left level zero
@@ -595,7 +634,7 @@ impl<const D: usize> SparseGridData<D>
 
 pub struct PointIterator<'a, const D: usize>
 {
-    data: &'a Vec<GridPoint<D>>,
+    pub data: &'a Vec<GridPoint<D>>,
     bounding_box: BoundingBox<D>,
     index: usize
 }

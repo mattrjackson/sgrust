@@ -24,4 +24,5 @@ pub enum BasisFunction
     ClenshawCurtis = 1,
     GaussPatterson = 2,
     CustomBasis = 3,
+    GaussLegendre = 4,
 }

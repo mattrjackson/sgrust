@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub(crate) struct NodeAdjacencyData
 {
     pub(crate) zero_index: usize,
@@ -28,6 +29,7 @@ impl DerefMut for NodeAdjacencyData
 
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub(crate) struct NodeAdjacency
 {
     pub(crate) inner: NodeAdjacencyInner,
@@ -38,35 +40,40 @@ pub(crate) struct NodeAdjacency
 use bitfield_struct::bitfield;
 
 #[bitfield(u128)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct NodeAdjacencyInner {
-    #[bits(30)]
+    #[bits(25)]
     pub(crate) left: i64,
-    #[bits(30)]
+    #[bits(25)]
     pub(crate) right: i64,
-    #[bits(30)]
+    #[bits(25)]
     pub(crate) up: i64,
-    #[bits(30)]
-    pub(crate) down: i64,
+    #[bits(25)]
+    pub(crate) down_left: i64,
+    #[bits(25)]
+    pub(crate) down_right: i64,
     #[bits(1)]
     pub(crate) has_left: bool,
     #[bits(1)]
     pub(crate) has_right: bool,
     #[bits(1)]
     pub(crate) has_parent: bool,
-    #[bits(1)]
-    pub(crate) has_left_child: bool,
-    #[bits(1)]
-    pub(crate) has_right_child: bool,
-    #[bits(1)]
-    pub(crate) has_child: bool,
-    #[bits(2)]
-    _other: u8
 }
 impl NodeAdjacencyInner
 { 
     #[inline]
     pub fn is_complete(&self) -> bool {
         self.has_left() && self.has_right() && self.has_left_child() && self.has_right_child() && self.has_parent()
+    }
+    
+    #[inline]
+    pub fn has_left_child(&self) -> bool {
+        self.down_left() != 0
+    }
+    
+    #[inline]
+    pub fn has_right_child(&self) -> bool {
+        self.down_right() != 0
     }
 }
 
@@ -89,5 +96,32 @@ impl<'de> Deserialize<'de> for NodeAdjacencyInner {
     {
         let raw = u128::deserialize(deserializer)?;
         Ok(Self(raw))
+    }
+}
+
+// rkyv implementations for NodeAdjacencyInner (bitfield type)
+#[cfg(feature = "rkyv")]
+mod rkyv_impl {
+    use super::NodeAdjacencyInner;
+    
+    impl rkyv::Archive for NodeAdjacencyInner {
+        type Archived = rkyv::rend::u128_le;
+        type Resolver = ();
+
+        fn resolve(&self, _resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+            out.write(rkyv::rend::u128_le::from_native(self.0));
+        }
+    }
+
+    impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for NodeAdjacencyInner {
+        fn serialize(&self, _serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+            Ok(())
+        }
+    }
+
+    impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<NodeAdjacencyInner, D> for rkyv::rend::u128_le {
+        fn deserialize(&self, _deserializer: &mut D) -> Result<NodeAdjacencyInner, D::Error> {
+            Ok(NodeAdjacencyInner(self.to_native()))
+        }
     }
 }

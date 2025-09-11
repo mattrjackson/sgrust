@@ -1,7 +1,6 @@
-use std::io::Write;
 
-use bincode::config::standard;
-use num_traits::Float;
+
+use crate::utilities::float::Float;
 //use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 use serde::Serialize;
 use serde_with::serde_as;
@@ -17,6 +16,7 @@ use super::{linear_grid::LinearGrid};
 /// 
 #[serde_as]
 #[derive(Default, Serialize, serde::Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct ImmutableLinearGrid<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
 {
     storage: SparseGridData<D>,
@@ -91,6 +91,10 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     #[inline]
     pub fn interpolate_unchecked(&self, x: [f64; D]) -> Result<[T; DIM_OUT], SGError>
     {
+        if self.values.len() == 1
+        {
+            return Ok(self.values[0]);
+        }
         use crate::const_generic::algorithms::interpolation::InterpolationOperation;        
         let iterator = &mut AdjacencyGridIterator::new( &self.storage);
         let op = InterpolationOperation(self.storage.has_boundary, BasisEvaluation(&self.storage, [LinearBasis; D]));      
@@ -147,35 +151,42 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     }
 
     ///
-    /// Saves grid to file...
+    /// Writes grid to file with the specified serialization format.
     /// 
-    pub fn save(&self, path: &str) -> Result<(), SGError>
+    pub fn write(&self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
+        use std::io::Write;
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
+        let buffer = crate::serialization::serialize(&self, format)?;
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
+
     ///
-    /// Reads full grid information from buffer
+    /// Write grid to buffer with the specified serialization format.
+    /// All formats use LZ4 compression.
     /// 
-    pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError>
-    {      
-        let buffer = lz4_flex::decompress_size_prepended(buffer).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
-        Ok(grid)
+    pub fn write_buffer(&self, format: crate::serialization::SerializationFormat) -> Result<Vec<u8>, SGError>
+    {     
+        crate::serialization::serialize(&self, format)
     }
 
     ///
-    /// Reads grid information
+    /// Reads full grid information from buffer.
     /// 
-    pub fn read<Reader: std::io::Read>(mut reader: Reader)  -> Result<Self, SGError>
+    pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError>
+    {      
+        crate::serialization::deserialize(buffer, format)
+    }
+
+    ///
+    /// Reads grid information from a reader.
+    /// 
+    pub fn read<Reader: std::io::Read>(mut reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError>
     {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
-        let buffer = lz4_flex::decompress_size_prepended(&bytes).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
-        Ok(grid)
+        Self::read_buffer(&bytes, format)
     }
 }
 
@@ -185,12 +196,12 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     fn from(value: LinearGrid<D,DIM_OUT>) -> Self {
         let alpha: Vec<[T; DIM_OUT]> = value.alpha().iter().map(|alpha|
         {
-            std::array::from_fn(|i|T::from(alpha[i]).unwrap())
+            std::array::from_fn(|i|T::from(alpha[i]))
         }).collect();
 
         let values: Vec<[T; DIM_OUT]> = value.values().iter().map(|value|
             {
-                std::array::from_fn(|i|T::from(value[i]).unwrap())
+                std::array::from_fn(|i|T::from(value[i]))
             }).collect();
         Self { storage: value.storage().clone(), alpha, values }
     }
@@ -199,10 +210,11 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
 #[test]
 fn check_size_difference()
 {
+     use crate::serialization::SerializationFormat;
      // Build the 2D grid object, only one value per node.
      let mut grid = LinearGrid::<6,1>::default();
      // using a full grid here, but a sparse grid could be used instead...
-     grid.full_grid_with_boundaries(3);
+     grid.full_grid_with_boundaries(3).expect("Could not create grid.");
  
      let f = |x: [f64; 6]|
      {
@@ -216,10 +228,10 @@ fn check_size_difference()
      let values = grid.points().map(f).collect();
      grid.set_values(values).unwrap();    
 
-     grid.save("grid.bin").unwrap();
+     grid.write("grid.bin", SerializationFormat::Bitcode).unwrap();
      let igrid: ImmutableLinearGrid<f32, 6,1> = grid.into();
-     igrid.save("igrid.bin").unwrap();
-     let _open_check = ImmutableLinearGrid::<f32, 6,1>::read(std::fs::File::open("igrid.bin").unwrap()).unwrap();
+     igrid.write("igrid.bin", SerializationFormat::Bitcode).unwrap();
+     let _open_check = ImmutableLinearGrid::<f32, 6,1>::read(std::fs::File::open("igrid.bin").unwrap(), SerializationFormat::Bitcode).unwrap();
 
      let grid_size = std::fs::metadata("grid.bin").unwrap().len();
      let igrid_size = std::fs::metadata("igrid.bin").unwrap().len();

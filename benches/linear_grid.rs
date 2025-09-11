@@ -6,7 +6,7 @@ fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
     // Build the 2D grid object, only one value per node.
     let mut grid = LinearGrid::<6,1>::default();
     // using a full grid here, but a sparse grid could be used instead...
-    grid.sparse_grid_with_boundaries([7;6]);
+    grid.sparse_grid_with_boundaries([7;6]).expect("Could not create grid.");
 
     let f = |x: [f64; 6]|
     {
@@ -28,7 +28,7 @@ fn build_twelve_d_grid() -> Result<LinearGrid<12,1>, SGError>
     // Build the 2D grid object, only one value per node.
     let mut grid = LinearGrid::<12,1>::default();
     // using a full grid here, but a sparse grid could be used instead...
-    grid.sparse_grid_with_boundaries([2;12]);
+    grid.sparse_grid_with_boundaries([2;12]).expect("Could not create grid.");
 
     let f = |x: [f64; 12]|
     {
@@ -62,6 +62,8 @@ fn run_six_d(c: &mut Criterion)
     let grid = build_six_d_grid().unwrap();
     c.bench_function("6d", |b|b.iter(||six_d(&grid).unwrap()));
 }
+#[cfg(feature="rayon")]
+use sgrust::const_generic::grids::immutable_linear_grid::ImmutableLinearGrid;
 #[cfg(feature="rayon")]
 fn six_d_immutable_graph(grid: &ImmutableLinearGrid<f32, 6,1>)-> Result<(), SGError>
 {

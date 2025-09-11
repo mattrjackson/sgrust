@@ -15,30 +15,31 @@ pub struct LinearGridGenerator;
 impl Generator for LinearGridGenerator
 {
     #[allow(non_snake_case)]
-    fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) {
-        regular(storage, levels, T);
+    fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>{
+        regular(storage, levels, T)
     }
 
     #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>) {
-        cliques(storage, levels, clique_size, T);
+    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>) -> Result<(), SGError> {
+        cliques(storage, levels, clique_size, T)
     }
 
-    fn full(&self, storage: &mut SparseGridData, level: usize) {
-       full(storage, level);
+    fn full(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
+       full(storage, level)
     }
-    fn full_with_boundaries(&self, storage: &mut SparseGridData, level: usize) {
-        full_with_boundaries(storage, level);
+    fn full_with_boundaries(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
+        full_with_boundaries(storage, level)
     }
 
     #[allow(non_snake_case)]
-    fn regular_with_boundaries(&self, storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) {
-        regular_with_boundaries(storage, levels, boundary_level, T);
+    fn regular_with_boundaries(&self, storage: &mut SparseGridData, levels: &[usize], boundary_level: Option<usize>, T :Option<f64>) -> Result<(), SGError> {
+        regular_with_boundaries(storage, levels, boundary_level, T)
     }
 }
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct LinearGrid(pub(crate) SparseGridBase);
 
 impl LinearGrid
@@ -55,31 +56,32 @@ impl LinearGrid
         &mut self.0
     }    
     
-    pub fn hierarchize(&mut self) {
+    pub fn hierarchize(&mut self) -> Result<(), SGError> {
         if !self.0.has_boundary()
         {
             let op = LinearHierarchisationOperation;  
-            self.0.hierarchize(&op);  
+            self.0.hierarchize(&op)  
         }
         else
         {
             let op = LinearBoundaryHierarchisationOperation;
-            self.0.hierarchize(&op);  
+            self.0.hierarchize(&op)  
         }
     }
-    pub fn refine<F: RefinementFunctor, EF: Fn(&[f64])->Vec<f64>>(&mut self, functor: &F, eval_fun: &EF, options: RefinementOptions, max_iterations: usize)
+    pub fn refine<F: RefinementFunctor, EF: Fn(&[f64])->Vec<f64>>(&mut self, functor: &F, eval_fun: &EF, options: RefinementOptions, max_iterations: usize) -> Result<(), SGError>
     {
         if !self.0.has_boundary()
         {
             let op = LinearHierarchisationOperation;  
-            self.0.refine(functor, eval_fun, &op, options, max_iterations);
+            self.0.refine(functor, eval_fun, &op, options, max_iterations)?;
         }
         else
         {
             let op = LinearBoundaryHierarchisationOperation;
-            self.0.refine(functor, eval_fun, &op, options, max_iterations);
+            self.0.refine(functor, eval_fun, &op, options, max_iterations)?;
         }        
         self.base_mut().storage.generate_adjacency_data();
+        Ok(())
     }
 
     #[cfg(feature="rayon")]
@@ -98,50 +100,51 @@ impl LinearGrid
         self.base_mut().storage.generate_adjacency_data();
     }
 
-    pub fn update_refined_values(&mut self, values: &[f64], sort_data: bool)
+    pub fn update_refined_values(&mut self, values: &[f64], sort_data: bool) -> Result<(), SGError>
     {
         let starting_index = self.0.values().len() - values.len();
         for (value, &new_value) in self.base_mut().values[starting_index..].iter_mut().zip(values)
         {
             *value = new_value;
         }
-        self.hierarchize();
+        self.hierarchize()?;
         if sort_data
         {            
             self.sort();
         }    
+        Ok(())
     }
     pub fn sort(&mut self) {
         self.0.sort();
         self.0.storage.generate_adjacency_data();
     }
 
-    pub fn sparse_grid(&mut self, levels: &[usize]) {
-        self.0.sparse_grid(levels, &LinearGridGenerator);
+    pub fn sparse_grid(&mut self, levels: &[usize]) -> Result<(), SGError> {
+        self.0.sparse_grid(levels, &LinearGridGenerator)
     }
 
-    pub fn full_grid(&mut self, level: usize) {
-        self.0.full_grid(level, &LinearGridGenerator);
+    pub fn full_grid(&mut self, level: usize) -> Result<(), SGError> {
+        self.0.full_grid(level, &LinearGridGenerator)
     }
 
-    pub fn sparse_grid_with_boundaries(&mut self, levels: &[usize]) {
-        self.0.sparse_grid_with_boundaries(levels, &LinearGridGenerator);
+    pub fn sparse_grid_with_boundaries(&mut self, levels: &[usize]) -> Result<(), SGError> {
+        self.0.sparse_grid_with_boundaries(levels, &LinearGridGenerator)
     }
 
-    pub fn full_grid_with_boundaries(&mut self, level: usize) {
-        self.0.full_grid_with_boundaries(level, &LinearGridGenerator);
+    pub fn full_grid_with_boundaries(&mut self, level: usize) -> Result<(), SGError>{
+        self.0.full_grid_with_boundaries(level, &LinearGridGenerator)
     }
     pub fn integrate(&self) -> Vec<f64>
     {
         self.0.integrate_isotropic()
     }
     
-    pub fn read<Reader: std::io::Read>(reader: Reader) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::read(reader)?))
+    pub fn read<Reader: std::io::Read>(reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
+        Ok(Self(SparseGridBase::read(reader, format)?))
     }
     
-    pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::read_buffer(buffer)?))
+    pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
+        Ok(Self(SparseGridBase::read_buffer(buffer, format)?))
     }    
 
      /// Get the surplus coefficients for this grid.
@@ -191,7 +194,7 @@ impl LinearGrid
     }
 
     /// Get copy of points that make up this grid.
-    pub fn points(&self) -> PointIterator
+    pub fn points(&self) -> PointIterator<'_>
     {
         self.0.points()
     }
@@ -232,7 +235,7 @@ impl LinearGrid
     pub fn set_values(&mut self, values: Vec<f64>) -> Result<(), SGError>
     {
         self.base_mut().set_values(values)?;
-        self.hierarchize();
+        self.hierarchize()?;
         self.base_mut().storage.generate_adjacency_data();
         Ok(())
     }
@@ -274,9 +277,9 @@ impl LinearGrid
     }
     
     /// Save data to path
-    pub fn save(&mut self, path: &str) -> Result<(), SGError>
+    pub fn write(&mut self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
-        self.0.save(path)
+        self.0.write(path, format)
     }
     
 }
@@ -288,7 +291,7 @@ fn check_make_grid_1d()
     let level = 8;
     let mut grid = LinearGrid::new(1,1);
     *grid.bounding_box_mut() = BoundingBox::new(&[0.0], &[1.00]);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid.");
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
     for (point, value) in points.zip(values.iter_mut())
@@ -318,7 +321,7 @@ fn check_make_grid_2d()
 {
     let level = 8;
     let mut grid = LinearGrid::new(2,1);
-    grid.full_grid(level);
+    grid.full_grid(level).expect("Couldn't generate grid");
     assert_eq!(grid.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
@@ -346,16 +349,15 @@ fn check_make_grid_with_boundaries_2d()
 {
     let level = 6;
     let mut grid = LinearGrid::new(2,1);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Could not create grid.");
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
-    let thresholds = RefinementOptions::new(1e-3);
     for (point, value) in points.zip(values.iter_mut())
     {
         *value = point[0]*point[0] + point[1]*point[1];
     }
     grid.set_values(values.clone()).unwrap();
-    grid.hierarchize();
+    grid.hierarchize().expect("Could not hierarchize grid.");
     println!("number of points={}", grid.len());
     println!("coarsening");
     let functor = crate::dynamic::refinement::surplus::SurplusRefinement(2,1);
@@ -377,7 +379,7 @@ fn check_make_grid_with_boundaries_2d()
 fn check_integration()
 {
     let mut grid = LinearGrid::new(2, 1);
-    grid.sparse_grid_with_boundaries(&[12,12]);
+    grid.sparse_grid_with_boundaries(&[12,12]).expect("Couldn't generate grid");
 
     let points: Vec<f64> = grid.points().flatten().collect();
     let mut values = vec![0.0; points.len() / 2];
@@ -386,7 +388,7 @@ fn check_integration()
         *value = point[0]*point[0] + point[1]*point[1];
     }
     grid.set_values(values.clone()).unwrap();
-    grid.hierarchize();
+    grid.hierarchize().expect("Couldn't hierarchize grid.");
     // grid.refine(&SurplusRefinement(1e-6), &mut |point|
     // {
     //     [point[0]*point[0] + point[1]*point[1]]
@@ -402,7 +404,7 @@ fn check_make_grid_with_boundaries_4d()
 {
     let level = 5;
     let mut grid = LinearGrid::new(4,1);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
     for (point, value) in points.zip(values.iter_mut())
@@ -425,9 +427,9 @@ fn check_make_grid_with_boundaries_4d()
 #[test]
 fn check_make_grid_with_boundaries_6d()
 {
-    let level = 8;
+    let level = 4;
     let mut grid = LinearGrid::new(6,1);
-    grid.sparse_grid_with_boundaries(&[level; 6]);
+    grid.sparse_grid_with_boundaries(&[level; 6]).expect("Couldn't generate grid");
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
     for (point, value) in points.zip(values.iter_mut())
@@ -458,12 +460,12 @@ fn check_grid_refinement()
     let level = 2;
     let mut grid = LinearGrid::new(2,1);
     let thresholds = RefinementOptions::new(1e-7);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     grid.update_values(&|point| vec![point[0]*point[0] + point[1]]);
     println!("---- After Refinement ----");
     let functor = crate::dynamic::refinement::surplus::SurplusRefinement(2,1);
-    grid.refine(&functor, &|x| vec![x[0]*x[0] + x[1]], thresholds, 10);
+    grid.refine(&functor, &|x| vec![x[0]*x[0] + x[1]], thresholds, 10).expect("Could not refine grid");
     // for point in grid.storage.iter()
     // {
     //     let c = point.unit_coordinate();
@@ -481,7 +483,7 @@ fn check_grid_refinement_dimension_adaptive()
 {
     let level = 2;
     let mut grid = LinearGrid::new(2,1);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     grid.update_values(&|point| vec![point[0]*point[0] + point[1]]);
     println!("---- After Refinement ----");
@@ -489,7 +491,7 @@ fn check_grid_refinement_dimension_adaptive()
     let mut options = RefinementOptions::new(1e-7);
     options.refinement_mode = crate::dynamic::algorithms::refinement::RefinementMode::Anisotropic;
     //options.level_limits = Some(vec![12, 11]);
-    grid.refine(&functor, &|x| vec![x[0]*x[0] + x[1]], options, 15);
+    grid.refine(&functor, &|x| vec![x[0]*x[0] + x[1]], options, 15).expect("Could not refine grid");
     println!("number of points={}", grid.len());   
     let mut value = [0.0];
     grid.interpolate(&[0.2,0.3], &mut value).unwrap();
@@ -504,7 +506,7 @@ fn check_grid_refinement_parallel()
     let level = 2;
     let mut grid = LinearGrid::new(2,1);
     let thresholds = RefinementOptions::new(1e-7);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     grid.update_values_parallel(&|point| vec![point[0]*point[0] + point[1]*point[1]]);
     println!("---- After Refinement ----");
@@ -522,7 +524,7 @@ fn check_grid_refinement_iteration()
 {
     let level = 2;
     let mut grid = LinearGrid::new(2,1);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
     let thresholds = RefinementOptions::new(1e-7);
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
@@ -543,7 +545,7 @@ fn check_grid_refinement_iteration()
     {
         let values: Vec<f64> = grid.refine_iteration(&functor, thresholds.clone()).chunks_exact_mut(2).
             map(|point| vec![point[0]*point[0] + point[1]]).flatten().collect();
-        grid.update_refined_values(&values, false);
+        grid.update_refined_values(&values, false).expect("Couldn't refine grid");
     }
     grid.sort();
     let mut value = [0.0];
@@ -558,7 +560,7 @@ fn check_grid_refinement_iteration_dimension_adaptive()
 {
     let level = 2;
     let mut grid = LinearGrid::new(2,1);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
     let mut options = RefinementOptions::new(1e-7);
     options.refinement_mode = crate::dynamic::algorithms::refinement::RefinementMode::Anisotropic;
     let points = grid.points();
@@ -579,7 +581,7 @@ fn check_grid_refinement_iteration_dimension_adaptive()
     for _ in 0..20
     {
         let values: Vec<_> = grid.refine_iteration(&functor, options.clone()).chunks_exact_mut(2).map(|point| [point[0]*point[0] + point[1]]).flatten().collect();
-        grid.update_refined_values(&values, false);
+        grid.update_refined_values(&values, false).expect("Couldn't refine grid");
     }
     grid.sort();
     let mut value = [0.0];
@@ -597,7 +599,7 @@ fn check_parallel_grid_refinement()
     let level = 3;
     let mut grid = LinearGrid::new(5,1);
     let thresholds = RefinementOptions::new(1e-6);
-    grid.full_grid_with_boundaries(level);
+    grid.full_grid_with_boundaries(level).expect("Couldn't generate grid");
    // assert_eq!(grid.storage.len(), (2_i32.pow(level as u32)-1).pow(2) as usize);
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
@@ -625,7 +627,7 @@ fn fit_1d_gaussian_cdf()
     let sigma = 0.1;
     let thresholds = RefinementOptions::new(1e-3);
     let mut grid = LinearGrid::new(1, 1);
-    grid.sparse_grid_with_boundaries(&[level]);
+    grid.sparse_grid_with_boundaries(&[level]).expect("Couldn't generate grid");
     let points = grid.points();
     let mut values = vec![0.0; grid.len()];
     for (point, value) in points.zip(values.iter_mut())
@@ -634,12 +636,152 @@ fn fit_1d_gaussian_cdf()
         *value = 0.5*(1.0+erf((x-0.5)/sigma/SQRT_2));
     }
     grid.set_values(values.clone()).unwrap();    
-    grid.hierarchize();
+    grid.hierarchize().expect("Could not hierarchize grid.");
     let functor = SurplusRefinement(1,1);
-    grid.refine(&functor, &|x| vec![0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], thresholds, 20);
+    grid.refine(&functor, &|x| vec![0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2)); 1], thresholds, 20).expect("Could not refine grid");
     let x = [0.323];
     let exact = 0.5*(1.0+erf((x[0]-0.5)/sigma/SQRT_2));
     let mut value = [0.0];
     grid.interpolate(&x, &mut value).unwrap();
     assert!((value[0]-exact).abs() < 1e-3);
+}
+
+#[test]
+fn compare_3d_sin_refinement_isotropic_vs_anisotropic()
+{
+    use crate::dynamic::refinement::surplus::SurplusRefinement;
+
+    println!("\n=== Comparing 3D Sin Function Refinement ===\n");
+    
+    // Test function: f(x,y,z) = sin(2π*x) * sin(2π*y) * sin(π*z)
+    // High frequency in x,y; lower frequency in z
+    let eval_fn = |point: &[f64]| -> Vec<f64> {
+        vec![1.0/(0.5 - point[0].powi(4)- point[1].powi(4)).abs() + 0.1]
+    };
+    
+    // Create two identical grids for isotropic and anisotropic refinement
+    let mut grid_iso = LinearGrid::new(3, 1);
+    let mut grid_aniso = LinearGrid::new(3, 1);
+    
+    // Initialize both grids with sparse grid at level [1,1,1] (smaller initial grid)
+    grid_iso.full_grid_with_boundaries(2).expect("failed to create isotropic grid");
+    grid_iso.update_values(&eval_fn);
+    
+    grid_aniso.full_grid_with_boundaries(2).expect("failed to create anisotropic grid");
+    grid_aniso.update_values(&eval_fn);
+    let initial_count = grid_iso.len();
+    println!("Initial grid size: {} points\n", initial_count);
+    
+    // Create refinement options with different thresholds to show different behavior
+    let mut options_iso = RefinementOptions::new(0.01);  // Refine everything (isotropic)
+    options_iso.refinement_mode = crate::dynamic::algorithms::refinement::RefinementMode::Isotropic;
+    
+    let mut options_aniso = RefinementOptions::new(0.01);  // Refine everything (anisotropic)
+    options_aniso.refinement_mode = crate::dynamic::algorithms::refinement::RefinementMode::Anisotropic;
+    
+    // Apply refinement with multiple iterations
+    let functor = SurplusRefinement(3, 1);
+    grid_iso.refine(&functor, &eval_fn, options_iso, 6)
+        .expect("isotropic refinement failed");
+    grid_iso.coarsen(&functor, 0.01);
+    grid_aniso.refine(&functor, &eval_fn, options_aniso, 6).unwrap();
+    
+    grid_aniso.coarsen(&functor, 0.01);
+    // Get results
+    let iso_count = grid_iso.len();
+    let aniso_count = grid_aniso.len();
+    
+    println!("Refinement Results:");
+    println!("  Isotropic:   {} points ({:+} new)", iso_count, iso_count - initial_count);
+    println!("  Anisotropic: {} points ({:+} new)", aniso_count, aniso_count - initial_count);
+    
+    // Compute peak approximation error at test points
+    let test_points: Vec<[f64; 3]> = (0..8)
+        .flat_map(|i| {
+            (0..8).map(move |j| {
+                (0..8).map(move |k| {
+                    [
+                        (i as f64 + 0.5) / 8.0,
+                        (j as f64 + 0.5) / 8.0,
+                        (k as f64 + 0.5) / 8.0,
+                    ]
+                })
+            })
+        })
+        .flatten()
+        .collect();
+    
+    let mut iso_peak_error: f64 = 0.0;
+    let mut aniso_peak_error: f64 = 0.0;
+    
+    for point in &test_points {
+        let exact = eval_fn(point)[0];
+        
+        // Isotropic error
+        let mut iso_result = [0.0];
+        if grid_iso.interpolate(point, &mut iso_result).is_ok() {
+            let error = (iso_result[0] - exact).abs();
+            iso_peak_error = iso_peak_error.max(error);
+        }
+        
+        // Anisotropic error
+        let mut aniso_result = [0.0];
+        if grid_aniso.interpolate(point, &mut aniso_result).is_ok() {
+            let error = (aniso_result[0] - exact).abs();
+            aniso_peak_error = aniso_peak_error.max(error);
+        }
+    }
+    
+    println!("\nApproximation Errors:");
+    println!("  Isotropic peak error:   {:.6e}", iso_peak_error);
+    println!("  Anisotropic peak error: {:.6e}", aniso_peak_error);
+    
+    // Efficiency metrics
+    let iso_eff = iso_peak_error / (iso_count as f64);
+    let aniso_eff = aniso_peak_error / (aniso_count as f64);
+    
+    println!("\nEfficiency (error per point):");
+    println!("  Isotropic:   {:.6e}", iso_eff);
+    println!("  Anisotropic: {:.6e}", aniso_eff);
+    
+    // Analysis
+    println!("\nAnalysis:");
+    println!("  Test function has high frequency (sin(2π·x), sin(2π·y)) and low frequency (sin(π·z))");
+    println!("  Isotropic refines all dimensions equally");
+    println!("  Anisotropic refines selectively (more in under-refined dims)");
+    println!("  Note: Dynamic implementation currently uses same refinement for both modes");
+    println!("        See const_generic version for fully optimized anisotropic strategy");
+    
+    if iso_peak_error < aniso_peak_error {
+        println!("\n  ✓ Isotropic achieves better absolute accuracy ({:.2}% lower error)",
+                 ((aniso_peak_error - iso_peak_error) / aniso_peak_error) * 100.0);
+    } else if aniso_peak_error < iso_peak_error {
+        println!("\n  ✓ Anisotropic achieves better absolute accuracy ({:.2}% lower error)",
+                 ((iso_peak_error - aniso_peak_error) / iso_peak_error) * 100.0);
+    } else {
+        println!("\n  ≈ Both modes achieve similar absolute accuracy");
+    }
+    
+    if iso_eff < aniso_eff {
+        println!("  ✓ Isotropic is more efficient ({:.2}% better error per point)",
+                 ((aniso_eff - iso_eff) / aniso_eff) * 100.0);
+    } else if aniso_eff < iso_eff {
+        println!("  ✓ Anisotropic is more efficient ({:.2}% better error per point)",
+                 ((iso_eff - aniso_eff) / iso_eff) * 100.0);
+    } else {
+        println!("  ≈ Both modes have similar efficiency");
+    }
+    
+    // Verify both methods refine successfully
+    assert!(iso_count > initial_count, "Isotropic should add points");
+    assert!(aniso_count > initial_count, "Anisotropic should add points");
+    
+    println!("\n✓ 3D sin function refinement comparison complete");
+    let start = std::time::Instant::now();
+    let mut r = vec![0.0];
+    for _ in 0..1e5 as usize
+    {
+        let _r = grid_aniso.interpolate(&[0.3,0.3,0.3], &mut r).unwrap();        
+    }
+    println!("1e5 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
 }

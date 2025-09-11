@@ -1,11 +1,11 @@
 use std::io::Write;
 
-use bincode::config::standard;
+
 
 //use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 use serde_with::serde_as;
 use crate::dynamic::algorithms::basis_evaluation::BasisEvaluation;
-use crate::dynamic::algorithms::refinement::{BaseRefinement, RefinementFunctor, RefinementMode, RefinementOptions, SparseGridRefinement};
+use crate::dynamic::algorithms::refinement::{BaseRefinement, RefinementFunctor, RefinementOptions};
 use crate::basis::linear::LinearBasis;
 use crate::errors::SGError;
 use crate::dynamic::algorithms::hierarchisation::HierarchisationOperation;
@@ -15,6 +15,7 @@ use crate::dynamic::generators::*;
 use serde::{Serialize,Deserialize};
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct SparseGridBase
 {
     pub(crate) storage: SparseGridData,
@@ -65,35 +66,40 @@ impl SparseGridBase
         self.storage.has_boundary()
     }
 
-    pub fn sparse_grid<GENERATOR: Generator>(&mut self, levels: &[usize], generator: &GENERATOR)
+    pub fn sparse_grid<GENERATOR: Generator>(&mut self, levels: &[usize], generator: &GENERATOR) -> Result<(), SGError>
     {        
-        generator.regular(&mut self.storage, levels, None);       
+        generator.regular(&mut self.storage, levels, None)?;       
         self.sort();
+        Ok(())
     }    
 
-    pub fn full_grid<GENERATOR: Generator>(&mut self, level: usize, generator: &GENERATOR)
+    pub fn full_grid<GENERATOR: Generator>(&mut self, level: usize, generator: &GENERATOR) -> Result<(), SGError>
     {
-        generator.full(&mut self.storage, level);
+        generator.full(&mut self.storage, level)?;
         self.sort();
+        Ok(())
     }
 
-    pub fn sparse_grid_with_boundaries<GENERATOR: Generator>(&mut self, levels: &[usize], generator: &GENERATOR)
+    pub fn sparse_grid_with_boundaries<GENERATOR: Generator>(&mut self, levels: &[usize], generator: &GENERATOR) -> Result<(), SGError>
     {
-        generator.regular_with_boundaries(&mut self.storage, levels, Some(1), None);
+        generator.regular_with_boundaries(&mut self.storage, levels, Some(1), None)?;
         self.storage.has_boundary = true;
         self.sort();
+        Ok(())
     }    
 
-    pub fn full_grid_with_boundaries<GENERATOR: Generator>(&mut self, level: usize, generator: &GENERATOR)
+    pub fn full_grid_with_boundaries<GENERATOR: Generator>(&mut self, level: usize, generator: &GENERATOR) -> Result<(), SGError>
     {
-        generator.full_with_boundaries(&mut self.storage, level);
+        generator.full_with_boundaries(&mut self.storage, level)?;
         self.storage.has_boundary = true;
         self.sort();
+        Ok(())
     }
-    pub fn hierarchize<OP: HierarchisationOperation>(&mut self, op: &OP)
+    pub fn hierarchize<OP: HierarchisationOperation>(&mut self, op: &OP) -> Result<(), SGError>
     {
         self.alpha.clone_from(&self.values);
-        op.hierarchize(&mut self.alpha, &self.storage);        
+        op.hierarchize(&mut self.alpha, &self.storage)?;     
+        Ok(())   
     }
 
     pub fn argsort<T: Ord>(data: &[T]) -> Vec<usize> {
@@ -171,7 +177,7 @@ impl SparseGridBase
     #[inline]
     pub fn interpolate_batch(&self, x: &[f64]) -> Result<Vec<f64>, SGError>
     {
-       use rayon::{iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
+       use rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
        use crate::dynamic::algorithms::interpolation::InterpolationOperation;
        let mut results = vec![0.0; x.len() / self.storage.num_inputs *self.storage.num_outputs];       
        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, vec![LinearBasis; self.storage.num_inputs], self.storage.num_inputs, self.storage.num_outputs));
@@ -198,7 +204,7 @@ impl SparseGridBase
     #[inline]
     pub fn interpolate_batch_unchecked(&self, x: &[f64]) -> Result<Vec<f64>, SGError>
     {
-        use rayon::{iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
+        use rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
         use crate::dynamic::algorithms::interpolation::InterpolationOperation;
         let mut results = vec![0.0; x.len() / self.storage.num_inputs *self.storage.num_outputs];       
         let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, vec![LinearBasis; self.storage.num_inputs], self.storage.num_inputs, self.storage.num_outputs));        
@@ -298,10 +304,6 @@ impl SparseGridBase
 
     pub fn refine_iteration(&mut self, functor: &impl RefinementFunctor, options: RefinementOptions) -> Vec<f64>
     {
-        if options.refinement_mode == RefinementMode::Anisotropic
-        {                 
-            self.coarsen_iteration(functor, options.threshold);
-        }
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
         self.values.resize(self.len()*self.storage.num_outputs, 0.0);            
@@ -314,16 +316,13 @@ impl SparseGridBase
         }           
         points
     }
-    pub fn refine<F: RefinementFunctor, OP: HierarchisationOperation, EF: Fn(&[f64])->Vec<f64>>(&mut self, functor: &F, eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) 
+    pub fn refine<F: RefinementFunctor, OP: HierarchisationOperation, EF: Fn(&[f64])->Vec<f64>>(&mut self, functor: &F, eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) -> Result<(), SGError>
     {
         let ref_op = BaseRefinement(self.storage.has_boundary());
-        let mut iteration = 0;     
+        let mut iteration = 1;     
         loop
         {
-            if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
-            {                 
-                self.coarsen_iteration(functor, options.threshold);                
-            }
+            
             let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
             if indices.is_empty()
             {
@@ -336,28 +335,30 @@ impl SparseGridBase
                 point = self.storage.bounding_box().to_real_coordinate(&point);
                 self.values.extend(eval_fun(&point));
             }            
-            self.hierarchize(op);
+            self.hierarchize(op)?;
             iteration += 1;            
-            if max_iterations <= iteration
+   
+            if iteration == max_iterations
             {
                 break;
             }
         }
-        self.sort();        
+        self.sort(); 
+        Ok(())       
     }
 
     #[cfg(feature="rayon")]
     pub fn refine_parallel<F: RefinementFunctor, OP: HierarchisationOperation, EF: Fn(&[f64]) -> Vec<f64> + Send + Sync>(&mut self, functor: &F, 
         eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) 
     {
-        use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+        use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let mut iteration = 0;     
         loop
         {
             use rayon::slice::ParallelSliceMut;
 
-            if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
+            if iteration > 0 && options.refinement_mode == crate::dynamic::algorithms::refinement::RefinementMode::Anisotropic
             {                 
                 self.coarsen_iteration(functor, options.threshold);                
             }
@@ -377,7 +378,7 @@ impl SparseGridBase
             }
             );        
             self.values.extend(&temp_values);
-            self.hierarchize(op);
+            self.hierarchize(op).expect("Could not hiearchize grid.");
             iteration += 1;            
             if max_iterations <= iteration
             {
@@ -389,13 +390,13 @@ impl SparseGridBase
 
   
     ///
-    /// Saves full grid information (including maps and iterator data).
-    /// Larger than compact form but faster than regenerating (compressed using LZ4).
+    /// Writes full grid information (including maps and iterator data).
+    /// All formats use LZ4 compression.
     /// 
-    pub fn save(&mut self, path: &str) -> Result<(), SGError>
+    pub fn write(&mut self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = lz4_flex::compress_prepend_size(&bincode::serde::encode_to_vec(&self, standard()).map_err(|_|SGError::SerializationFailed)?);
+        let buffer = crate::serialization::serialize(&self, format)?;
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
@@ -403,25 +404,19 @@ impl SparseGridBase
     
     ///
     /// Reads full grid information (including maps and iterator data).
-    /// Much larger than compact form but faster than regenerating.
     /// 
-    pub fn read_buffer(buffer: &[u8]) -> Result<Self, SGError>
+    pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError>
     {      
-        let buffer = lz4_flex::decompress_size_prepended(buffer).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
-        Ok(grid)
+        crate::serialization::deserialize(buffer, format)
     }
 
     ///
-    /// Reads full grid information (including maps and iterator data).
-    /// Much larger than compact form but faster than regenerating.
+    /// Reads full grid information from a reader.
     /// 
-    pub fn read<Reader: std::io::Read>(mut reader: Reader)  -> Result<Self, SGError>
+    pub fn read<Reader: std::io::Read>(mut reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError>
     {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
-        let buffer = lz4_flex::decompress_size_prepended(&bytes).map_err(|_|SGError::LZ4DecompressionFailed)?;
-        let (grid, _size) = bincode::serde::decode_from_slice(&buffer, standard()).map_err(|_|SGError::DeserializationFailed)?;
-        Ok(grid)
+        Self::read_buffer(&bytes, format)
     }
 }

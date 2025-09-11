@@ -18,7 +18,7 @@ impl StepIterator
     pub fn new(max_levels: &[u32], grid_type: GridType) -> Self
     {
         let ndim = max_levels.len();
-        let level_bound = if grid_type == GridType::Sparse {  *max_levels.iter().max().unwrap() } else { max_levels.iter().sum() };
+        let level_bound = if grid_type == GridType::Sparse {  *max_levels.iter().max().unwrap_or(&0) } else { max_levels.iter().sum() };
 
         Self { level_bound, max_levels: max_levels.to_owned(), index_sum: 0, ndim,  index_head: vec![0; ndim], first: true }
     } 
