@@ -138,7 +138,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         }
         for value in self.storage.map.values_mut()
         {            
-            *value = indices_rev[*value];
+            *value = indices_rev[*value as usize] as u32;
         }
     }
 
@@ -391,7 +391,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     pub fn write(&mut self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = crate::serialization::serialize(&self, format)?;
+        let buffer = crate::serialization::serialize(self, format)?;
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
@@ -401,7 +401,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     /// 
     pub fn write_buffer(&self, format: crate::serialization::SerializationFormat) -> Result<Vec<u8>, SGError>
     {     
-        crate::serialization::serialize(&self, format)
+        crate::serialization::serialize(self, format)
     }
     
     ///

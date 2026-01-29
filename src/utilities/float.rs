@@ -1,6 +1,19 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
-pub trait Float : Into<f64> + Copy + Mul<Output = Self> + Div<Output = Self> + Add<Output = Self> + Sub<Output = Self> + AddAssign + SubAssign + MulAssign + DivAssign {    
+/// Marker trait to support rkyv serialization. Stub implementation when feature not enabled.
+#[cfg(not(feature="rkyv"))]
+pub trait RkyvMarker{}
+/// Marker trait to support rkyv serialization
+#[cfg(feature="rkyv")]
+pub trait RkyvMarker : rkyv::Archive + rkyv::Archive<Archived: 
+        rkyv::Deserialize<Self, rkyv::rancor::Strategy<rkyv::de::Pool, rkyv::rancor::Error>> +
+        rkyv::Portable +
+        for<'a> rkyv::bytecheck::CheckBytes<rkyv::rancor::Strategy<rkyv::validation::Validator<rkyv::validation::archive::ArchiveValidator<'a>, rkyv::validation::shared::SharedValidator>, rkyv::rancor::Error>>
+    > +
+    for<'a> rkyv::Serialize<rkyv::rancor::Strategy<rkyv::ser::Serializer<rkyv::util::AlignedVec, rkyv::ser::allocator::ArenaHandle<'a>, rkyv::ser::sharing::Share>, rkyv::rancor::Error>> where Self: Sized{}
+impl RkyvMarker for f32{}
+impl RkyvMarker for f64{}
+pub trait Float : Into<f64> + Copy + Mul<Output = Self> + Div<Output = Self> + Add<Output = Self> + Sub<Output = Self> + AddAssign + SubAssign + MulAssign + DivAssign + RkyvMarker {    
     fn to_f64(&self) -> f64;
     fn from(value: f64) -> Self;
     fn zero() -> Self;

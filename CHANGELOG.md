@@ -10,6 +10,22 @@
 ### Fixed
 -->
 
+## [0.8.0] — 2026-01-29
+
+### Breaking
+All serialization/deserialization methods have been modified. The hash is now stored instead of the adjacency data, and instead the adjacency data is constructed after deserializing, when using the `read` or `read_buffer` methods. This results in massive reduction in overhead associated with storing the adjacency data.
+### Security
+### Added
+Added `interpolate_with_state` to allow (slightly) more efficient interpolation on dynamic linear grids.
+Added level_one and right_zero indices tracking to adjacency data to speed up interpolation. Overhauled `AdjacenyData` to minimize memory footprint.
+### Changed
+Unified serialization methods.
+Also, see breaking changes.  
+### Deprecated
+### Removed
+### Fixed
+Fixed interpolation bug for a level 0 grid with a single point.
+
 ## [0.7.0] — 2026-01-18
 
 ### Security

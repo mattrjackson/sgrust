@@ -148,7 +148,7 @@ impl SparseGridBase
         }
         for value in self.storage.map.values_mut()
         {            
-            *value = indices_rev[*value];
+            *value = indices_rev[*value as usize] as u32;
         }
     }
 
@@ -169,8 +169,27 @@ impl SparseGridBase
     {
         use crate::dynamic::algorithms::interpolation::InterpolationOperation;
         let iterator = &mut AdjacencyGridIterator::new(&self.storage);
-        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, vec![LinearBasis; self.storage.num_inputs], self.storage.num_inputs, self.storage.num_outputs));      
+        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));      
         op.interpolate(x, &self.alpha, iterator, result)
+    }
+
+    /// Create a reusable interpolation state for zero-allocation repeated interpolation.
+    /// 
+    /// Use with `interpolate_with_state` for maximum performance when interpolating many points.
+    #[inline]
+    pub fn create_interpolation_state(&self) -> crate::dynamic::algorithms::interpolation_state::InterpolationState<'_> {
+        crate::dynamic::algorithms::interpolation_state::InterpolationState::new(&self.storage)
+    }
+
+    /// Interpolate using a pre-created state to avoid per-call overhead.
+    /// 
+    /// This is the fastest interpolation method when processing many points.
+    #[inline]
+    pub fn interpolate_with_state(&self, x: &[f64], state: &mut crate::dynamic::algorithms::interpolation_state::InterpolationState<'_>, result: &mut [f64]) -> Result<(), SGError>
+    {
+        use crate::dynamic::algorithms::interpolation::InterpolationOperation;        
+        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));      
+        op.interpolate(x, &self.alpha, &mut state.iterator, result)
     }
 
     #[cfg(feature="rayon")]
@@ -180,7 +199,7 @@ impl SparseGridBase
        use rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
        use crate::dynamic::algorithms::interpolation::InterpolationOperation;
        let mut results = vec![0.0; x.len() / self.storage.num_inputs *self.storage.num_outputs];       
-       let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, vec![LinearBasis; self.storage.num_inputs], self.storage.num_inputs, self.storage.num_outputs));
+       let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));
         x.par_chunks_exact(self.storage.num_inputs).zip(results.par_chunks_exact_mut(self.storage.num_outputs)).try_for_each(
             |(x, y)|
             {
@@ -207,7 +226,7 @@ impl SparseGridBase
         use rayon::{iter::{IndexedParallelIterator, ParallelIterator}, slice::{ParallelSlice, ParallelSliceMut}};
         use crate::dynamic::algorithms::interpolation::InterpolationOperation;
         let mut results = vec![0.0; x.len() / self.storage.num_inputs *self.storage.num_outputs];       
-        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, vec![LinearBasis; self.storage.num_inputs], self.storage.num_inputs, self.storage.num_outputs));        
+        let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));        
         x.par_chunks_exact(self.storage.num_inputs).zip(results.par_chunks_exact_mut(self.storage.num_outputs)).for_each(
             |(x, y)|
             {
@@ -396,7 +415,7 @@ impl SparseGridBase
     pub fn write(&mut self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = crate::serialization::serialize(&self, format)?;
+        let buffer = crate::serialization::serialize(self, format)?;
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }

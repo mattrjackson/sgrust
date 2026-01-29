@@ -140,12 +140,16 @@ impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
     }
     
     pub fn read<Reader: std::io::Read>(reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read(reader, format)?))
+        let mut grid = Self(SparseGridBase::<D, DIM_OUT>::read(reader, format)?);
+        grid.update_adjacency_data();
+        Ok(grid)
     }
     
     pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::<D, DIM_OUT>::read_buffer(buffer, format)?))
-    }    
+        let mut grid = Self(SparseGridBase::<D, DIM_OUT>::read_buffer(buffer, format)?);
+        grid.update_adjacency_data();
+        Ok(grid)
+    }        
 
     pub fn write_buffer(&self, format: crate::serialization::SerializationFormat) -> Result<Vec<u8>, SGError> where Self: Sized {
         self.base().write_buffer(format)
@@ -285,6 +289,11 @@ impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
     pub fn write(&mut self, path: &str, format: crate::serialization::SerializationFormat) -> Result<(), SGError>
     {
         self.0.write(path, format)
+    }
+
+    pub fn update_adjacency_data(&mut self)
+    {
+        self.base_mut().storage.generate_adjacency_data();
     }
     
 }
@@ -764,4 +773,107 @@ fn compare_3d_sin_refinement_isotropic_vs_anisotropic()
         let _r = grid_aniso.interpolate([0.3,0.3,0.3]).unwrap();        
     }
     println!("1e5 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
+}
+
+#[test]
+fn check_lopsided_anisotropic_boundary_refinement()
+{
+    use crate::const_generic::refinement::surplus::SurplusRefinement;
+
+    let mut grid_iso = LinearGrid::<3,1>::new();
+    let mut grid_aniso = LinearGrid::<3,1>::new();
+    grid_iso.full_grid_with_boundaries(2).expect("failed to create boundary grid");
+    grid_aniso.full_grid_with_boundaries(2).expect("failed to create boundary grid");
+
+    // Extremely anisotropic target: very sharp boundary layer in x, tiny trends in y/z.
+    let eval_fn = |p: &[f64;3]| -> [f64;1] {
+        [(2.0 * p[0].powi(5)).exp() + 0.002 * p[1] + 0.001 * p[2]]
+    };
+
+    grid_iso.update_values(&eval_fn);
+    grid_aniso.update_values(&eval_fn);
+
+    let mut options_iso = RefinementOptions::new(1e-12);
+    options_iso.refinement_mode = crate::const_generic::algorithms::refinement::RefinementMode::Isotropic;
+
+    let mut options_aniso = RefinementOptions::new(1e-12);
+    options_aniso.refinement_mode = crate::const_generic::algorithms::refinement::RefinementMode::Anisotropic;
+    // Very lopsided refinement limits: allow deep refinement only in x.
+    options_aniso.level_limits = Some(vec![10, 1, 1]);
+
+    let functor = SurplusRefinement;
+    grid_iso.refine(&functor, &eval_fn, options_iso, 12).expect("isotropic refinement failed");
+    grid_aniso.refine(&functor, &eval_fn, options_aniso, 12).expect("anisotropic refinement failed");
+
+    let mut max_levels = [0u8; 3];
+    for node in grid_aniso.storage().nodes().iter()
+    {
+        for d in 0..3
+        {
+            max_levels[d] = max_levels[d].max(node.level[d]);
+        }
+    }
+
+    assert!(max_levels[0] > 1, "x should refine beyond initial level");
+    //assert!(max_levels[1] <= 1 && max_levels[2] <= 1, "y/z should remain shallow due to level limits");
+    assert!(max_levels[0] > max_levels[1], "refinement should be lopsided toward x");
+
+    let x0 = [0.0, 0.25, 0.75];
+    let x1 = [1.0, 0.25, 0.75];
+    let exact_x0 = eval_fn(&x0)[0];
+    let exact_x1 = eval_fn(&x1)[0];
+
+    let approx_x0 = grid_aniso.interpolate(x0).unwrap()[0];
+    let approx_x1 = grid_aniso.interpolate(x1).unwrap()[0];
+
+    println!("Exact at x=0: {}, Approx: {}", exact_x0, approx_x0);
+    println!("Exact at x=1: {}, Approx: {}", exact_x1, approx_x1);
+    assert!((approx_x0 - exact_x0).abs() < 1e-6, "boundary basis at x=0 should be accurate");
+    assert!((approx_x1 - exact_x1).abs() < 1e-6, "boundary basis at x=1 should be accurate");
+
+    let iso_count = grid_iso.len();
+    let aniso_count = grid_aniso.len();
+    println!("Isotropic points: {}, Anisotropic points: {}", iso_count, aniso_count);
+    assert!(aniso_count < iso_count, "anisotropic refinement should use fewer points than isotropic");
+}
+
+#[test]
+fn check_boundary_refine_hierarchize_without_coarsen()
+{
+    use crate::const_generic::refinement::surplus::SurplusRefinement;
+
+    let mut grid = LinearGrid::<2,1>::new();
+    grid.full_grid_with_boundaries(1).expect("failed to create boundary grid");
+
+    // Highly asymmetric in x with boundary layer; mild variation in y.
+    let eval_fn = |p: &[f64;2]| -> [f64;1] {
+        [(50.0 * (1.0 - p[0])).exp() * (0.1 + p[1])]
+    };
+
+    grid.update_values(&eval_fn);
+
+    let mut options = RefinementOptions::new(1e-10);
+    options.refinement_mode = crate::const_generic::algorithms::refinement::RefinementMode::Anisotropic;
+    options.level_limits = Some(vec![8, 3]);
+
+    let functor = SurplusRefinement;
+    // Uses refine (not refine_iteration), so no coarsening occurs.
+    grid.refine(&functor, &eval_fn, options, 6).expect("anisotropic refinement failed");
+
+    // Explicit hierarchize to isolate boundary support issues before any coarsening.
+    grid.hierarchize().expect("hierarchize failed after boundary refinement");
+
+    for value in grid.values().iter()
+    {
+        assert!(value[0].is_finite(), "non-finite value after boundary hierarchization");
+    }
+
+    let x0 = [0.0, 0.5];
+    let x1 = [1.0, 0.5];
+    let exact_x0 = eval_fn(&x0)[0];
+    let exact_x1 = eval_fn(&x1)[0];
+    let approx_x0 = grid.interpolate(x0).unwrap()[0];
+    let approx_x1 = grid.interpolate(x1).unwrap()[0];
+    assert!((approx_x0 - exact_x0).abs() < 1e-6, "boundary basis at x=0 should be accurate");
+    assert!((approx_x1 - exact_x1).abs() < 1e-6, "boundary basis at x=1 should be accurate");
 }

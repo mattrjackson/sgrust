@@ -5,9 +5,11 @@ use crate::{basis::{base::Basis, linear::LinearBasis}, dynamic::{iterators::dyna
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIteratorT>(storage: &SparseGridData, basis: &[LinearBasis], x: &[f64], 
+pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIteratorT>(storage: &SparseGridData, x: &[f64], 
     dim: usize, value: T, iterator: &mut Iterator, alpha: &[T], result: &mut [T], ndim: usize, num_outputs: usize) -> Result<(), SGError>
 {
+    // LinearBasis is a zero-sized type, create it inline instead of passing as parameter
+    let basis = LinearBasis;
     let mut level = 0;
     loop
     {
@@ -15,7 +17,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
         let work_index = iterator.point_index(dim);        
         if level > 0
         {
-            let new_value = T::from(basis[dim].eval(level, work_index, x[dim]));
+            let new_value = T::from(basis.eval(level, work_index, x[dim]));
             if dim == ndim - 1
             {
                 #[allow(clippy::needless_range_loop)]
@@ -26,7 +28,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
             }
             else 
             {
-                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result, ndim, num_outputs)?;    
+                eval_boundary(storage, x, dim + 1, value * new_value, iterator, alpha, result, ndim, num_outputs)?;    
             }
         }
         else
@@ -37,7 +39,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
             if iterator.reset_to_left_level_zero(dim)
             {
                 let seq_l = iterator.index().ok_or_else(||SGError::InvalidIndex)?;
-                let new_value_l = T::from(basis[dim].eval(0, 0, x[dim]));
+                let new_value_l = T::from(basis.eval(0, 0, x[dim]));
                 if dim == ndim - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -48,14 +50,14 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
                 }
                 else 
                 {
-                    eval_boundary(storage, basis, x, dim + 1, value * new_value_l, iterator, alpha, result, ndim, num_outputs)?;
+                    eval_boundary(storage, x, dim + 1, value * new_value_l, iterator, alpha, result, ndim, num_outputs)?;
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_right_level_zero(dim)
             {
                 let seq_r = iterator.index().ok_or_else(||SGError::InvalidIndex)?;
-                let new_value_r = T::from(basis[dim].eval(0, 1, x[dim]));
+                let new_value_r = T::from(basis.eval(0, 1, x[dim]));
                 if dim == ndim - 1
                 {
                     #[allow(clippy::needless_range_loop)]
@@ -66,7 +68,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
                 }
                 else 
                 {
-                    eval_boundary(storage, basis, x, dim + 1, value * new_value_r, iterator, alpha, result, ndim, num_outputs)?;
+                    eval_boundary(storage, x, dim + 1, value * new_value_r, iterator, alpha, result, ndim, num_outputs)?;
                 }
             }
         }

@@ -267,9 +267,6 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
                 point.level[dim] = level - 1;
             }  
             self.create_gridpoint_internal(storage, point);
-            // reset level and index back to original values
-            point.level[dim] = level;
-            point.index[dim] = index;
         }
     }
 

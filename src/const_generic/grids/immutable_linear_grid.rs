@@ -26,7 +26,7 @@ pub struct ImmutableLinearGrid<T: Float + std::ops::AddAssign + serde::Serialize
     values: Vec<[T; DIM_OUT]>,     
 }
 
-impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize> ImmutableLinearGrid<T, D, DIM_OUT>
+impl<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize> ImmutableLinearGrid<T, D, DIM_OUT>
 {
     pub fn len(&self) ->usize
     {
@@ -157,7 +157,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     {
         use std::io::Write;
         let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|_|SGError::FileIOError)?);        
-        let buffer = crate::serialization::serialize(&self, format)?;
+        let buffer = crate::serialization::serialize(self, format)?;
         file.write_all(&buffer).map_err(|_|SGError::WriteBufferFailed)?;
         Ok(())
     }
@@ -168,7 +168,7 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     /// 
     pub fn write_buffer(&self, format: crate::serialization::SerializationFormat) -> Result<Vec<u8>, SGError>
     {     
-        crate::serialization::serialize(&self, format)
+        crate::serialization::serialize(self, format)
     }
 
     ///
@@ -176,7 +176,9 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
     /// 
     pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError>
     {      
-        crate::serialization::deserialize(buffer, format)
+        let mut grid: ImmutableLinearGrid<T, D, DIM_OUT> = crate::serialization::deserialize(buffer, format)?;
+        grid.update_adjacency_data();
+        Ok(grid)
     }
 
     ///
@@ -187,6 +189,10 @@ impl<T: Float  + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deseria
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(|_|SGError::ReadBufferFailed)?;
         Self::read_buffer(&bytes, format)
+    }
+    pub fn update_adjacency_data(&mut self)
+    {
+        self.storage.generate_adjacency_data();
     }
 }
 

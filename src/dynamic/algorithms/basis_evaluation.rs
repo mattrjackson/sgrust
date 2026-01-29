@@ -1,33 +1,36 @@
 use crate::utilities::float::Float;
 use crate::{basis::{base::Basis, linear::LinearBasis}, dynamic::{iterators::dynamic_grid_iterator::GridIteratorT, storage::SparseGridData}, errors::SGError};
 
+/// Maximum supported dimensions for dynamic grids (for stack allocation optimization)
+const MAX_DIM: usize = 32;
 
-pub struct BasisEvaluation<'a>(pub &'a SparseGridData, pub Vec<LinearBasis>, pub usize, pub usize);
+pub struct BasisEvaluation<'a>(pub &'a SparseGridData, pub usize, pub usize);
 
 impl BasisEvaluation<'_>
 {
     #[inline]
-    pub(crate) fn basis(&self, dim: usize) -> &LinearBasis
+    pub(crate) fn basis(&self) -> LinearBasis
     {
-        &self.1[dim]
+        LinearBasis
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
     fn recursive_eval<Iterator: GridIteratorT, T: Float +std::ops::AddAssign> (&self, point: &[f64], current_dim: usize, 
-        value: T, iterator: &mut Iterator, source: &Vec<u32>, alpha: &[T], result: &mut [T]) -> Result<(), SGError>
+        value: T, iterator: &mut Iterator, source: &[u32], alpha: &[T], result: &mut [T]) -> Result<(), SGError>
     {
         #[allow(non_snake_case)]
-        let D = self.2;
+        let D = self.1;
         #[allow(non_snake_case)]
-        let DIM_OUT = self.3;
+        let DIM_OUT = self.2;
         const MAX_LEVEL: u32 = 31;
         let idx = source[current_dim];
         let mut level = 1;      
+        let basis = self.basis();
         
         loop
         {
             let index = iterator.point_index(current_dim);
-            let val = T::from(self.basis(current_dim).eval(level, index, point[current_dim])) * value;            
+            let val = T::from(basis.eval(level, index, point[current_dim])) * value;            
             if current_dim == D - 1
             {
                 if iterator.index().is_none()
@@ -76,16 +79,16 @@ impl BasisEvaluation<'_>
         iterator: &mut Iterator, result: &mut [T]) -> Result<(), SGError> 
     {        
         #[allow(non_snake_case)]
-        let D = self.2;
-        #[allow(non_snake_case)]
-        let _DIM_OUT = self.3;
+        let D = self.1;
         let bits = std::mem::size_of::<u32>() * 8;
         if !self.0.bounding_box.contains(&point)
         {
             return Err(SGError::OutOfDomain);
         }
         let unit_coord = self.0.bounding_box.to_unit_coordinate(&point);
-        let mut source = vec![0_u32; D];
+        
+        // Use fixed-size array to avoid heap allocation
+        let mut source = [0_u32; MAX_DIM];
 
         for d in 0..D
         {
@@ -99,6 +102,6 @@ impl BasisEvaluation<'_>
                 source[d] = (val + 1.0) as u32;
             }
         }
-        self.recursive_eval(&unit_coord, 0,  T::from(1.0), iterator, &source, alpha, result)
+        self.recursive_eval(&unit_coord, 0,  T::from(1.0), iterator, &source[..D], alpha, result)
     }
 }

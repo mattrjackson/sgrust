@@ -1,12 +1,12 @@
 use std::{hash::{Hash, Hasher}, ops::{Index, IndexMut}};
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use bitfield_struct::bitfield;
 use crate::const_generic::iterators::grid_iterator::{GridIteratorT, HashMapGridIterator};
-
+use nohash_hasher::BuildNoHashHasher;
 use crate::adjacency_data::{NodeAdjacency, NodeAdjacencyData};
-
+pub type FastU64Map<V> = std::collections::HashMap<u64, V, BuildNoHashHasher<u64>>;
 #[bitfield(u8, new=false)]
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct GridPointFlags
@@ -326,7 +326,7 @@ impl<const D: usize> SparseGridData<D>
         point.hash(hasher);
         match self.map.get(&hasher.finish())
         {
-            Some(&seq) => Some(&mut self.nodes[seq]),
+            Some(&seq) => Some(&mut self.nodes[seq as usize]),
             None => None
         }
     }
@@ -338,7 +338,7 @@ impl<const D: usize> SparseGridData<D>
         point.hash(hasher);
         match self.map.get(&hasher.finish())
         {
-            Some(&seq) => Some(&self.nodes[seq]),
+            Some(&seq) => Some(&self.nodes[seq as usize]),
             None => None
         }
     }
@@ -369,7 +369,7 @@ impl<const D: usize> SparseGridData<D>
     {
         let hasher = &mut FxHasher::default();
         point.hash(hasher);
-        self.map.get(&hasher.finish()).copied()
+        self.map.get(&hasher.finish()).map(|v|*v as usize)
     }
 
     pub fn remove(&mut self, points_to_keep: &indexmap::IndexSet<usize>)
@@ -448,7 +448,7 @@ impl<const D: usize> SparseGridData<D>
         // make sure our is_inner flag is up-to-date...
         point.flags.update_is_inner(&point.level);
         self.nodes.push(point);        
-        self.map.insert(point.into(), self.len() - 1);
+        self.map.insert(point.into(), self.len() as u32 - 1);
         self.len() - 1
     }
 
@@ -458,7 +458,7 @@ impl<const D: usize> SparseGridData<D>
         // make sure our is_inner flag is up-to-date...
         point.flags.update_is_inner(&point.level);
         let key: u64 = point.into();
-        self.map.insert(key, index);
+        self.map.insert(key, index as u32);
         self.nodes[index] = point;
     }
     ///
@@ -468,17 +468,19 @@ impl<const D: usize> SparseGridData<D>
         PointIterator::new(&self.nodes, self.bounding_box)
     }
 }
-
+#[cfg(feature = "rkyv")]
+use rkyv::{with::Skip};
 #[derive(Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct SparseGridData<const D: usize>
 {
     pub(crate) bounding_box: BoundingBox<D>,
     pub(crate) nodes: Vec<GridPoint<D>>,
-    pub(crate) adjacency_data: NodeAdjacencyData,    
-    pub(crate) has_boundary: bool,
     #[serde(skip_serializing, skip_deserializing)]
-    pub(crate) map: FxHashMap<u64, usize>
+    #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
+    pub(crate) adjacency_data: NodeAdjacencyData,    
+    pub(crate) has_boundary: bool,    
+    pub(crate) map: FastU64Map<u32>
 }
 
 impl<const D: usize> Index<usize> for SparseGridData<D>
@@ -499,7 +501,7 @@ impl<const D: usize> IndexMut<usize> for SparseGridData<D>
 impl<const D: usize> Default for SparseGridData<D>
 {
     fn default() -> Self {
-        Self { nodes: Default::default(), bounding_box: Default::default(), adjacency_data: NodeAdjacencyData::default(), has_boundary: false, map: FxHashMap::default() }
+        Self { nodes: Default::default(), bounding_box: Default::default(), adjacency_data: NodeAdjacencyData::default(), has_boundary: false, map: FastU64Map::default() }
     }
 }
 
@@ -508,19 +510,22 @@ impl<const D: usize> SparseGridData<D>
     pub fn generate_map(&mut self)
     {
         
-        let mut map = FxHashMap::default();
+        let mut map = FastU64Map::default();
         for (i, node) in self.nodes.iter().enumerate()
         {
             let mut hasher = FxHasher::default();
             node.hash(&mut hasher);            
-            map.insert(hasher.finish(), i);
+            map.insert(hasher.finish(), i as u32);
         }
         self.map = map;
     }
 
     pub fn generate_adjacency_data(&mut self)
     {
-        let mut array = vec![NodeAdjacency::default(); D*self.len()];
+        let total_size = D * self.len();
+        let mut array = vec![NodeAdjacency::default(); total_size];
+        let mut left_zero = vec![0_u32; total_size];
+        let mut right_zero = vec![0_u32; total_size];
         if self.map.len() != self.len()
         {
             self.generate_map();
@@ -529,51 +534,33 @@ impl<const D: usize> SparseGridData<D>
         {
             for i in 0..self.len()
             {
-                self.generate_adjacency_data_for_index(&mut array, i, dim);     
+                self.generate_adjacency_data_for_index(&mut array, &mut left_zero, &mut right_zero, i, dim);     
             }
         }
         self.adjacency_data.zero_index = self.index_of(&GridPoint::zero_index()).unwrap_or(usize::MAX);
         self.adjacency_data.data = array;
+        self.adjacency_data.left_zero = left_zero;
+        self.adjacency_data.right_zero = right_zero;
     }
 
-    fn generate_adjacency_data_for_index(&mut self, array:&mut [NodeAdjacency], seq: usize, dim: usize)
+    fn generate_adjacency_data_for_index(&mut self, array:&mut [NodeAdjacency], left_zero: &mut [u32], right_zero: &mut [u32], seq: usize, dim: usize)
     {
 
         let mut iterator = HashMapGridIterator::new(self);
         let offset =  dim * self.len();
         let active_index = offset + seq;
-        if !array[active_index].inner.is_complete()
-        {
-            let node_index= iterator.storage[seq]; 
-            iterator.set_index(node_index);
-            iterator.step_left(dim);
-            if let Some(left_index) = iterator.index()
-            {                
-                // assign left node            
-                array[active_index].inner.set_left(left_index as i64 - seq as i64);
-                array[active_index].inner.set_has_left(true);
-                // assign right node for left of current node...
-                array[offset + left_index].inner.set_right(seq as i64 - left_index as i64);
-                array[offset + left_index].inner.set_has_right(true);
-            }
-            iterator.set_index(node_index);
-            iterator.step_right(dim);     
-            if let Some(right_index) = iterator.index()
-            {
-                // assign right node
-                array[active_index].inner.set_right(right_index as i64 - seq as i64);
-                array[active_index].inner.set_has_right(true);
-                // assign left node for right of current node...
-                array[offset + right_index].inner.set_left(seq as i64 - right_index as i64);
-                array[offset + right_index].inner.set_has_left(true);
-            }        
+        let node_index= iterator.storage[seq]; 
+        
+        // Only process adjacency links if not already complete
+        if !array[active_index].is_complete()
+        {            
             iterator.set_index(node_index);
             iterator.up(dim);       
             if let Some(parent_index) = iterator.index()  // parent exists
             {
                 // assign parent
-                array[active_index].inner.set_up(parent_index as i64 - seq as i64);      
-                array[active_index].inner.set_has_parent(true);
+                array[active_index].set_up(parent_index as i64 - seq as i64);      
+                array[active_index].set_has_parent(true);
             }
             iterator.set_index(node_index);
             // get left child
@@ -581,7 +568,7 @@ impl<const D: usize> SparseGridData<D>
             if let Some(lc_index) = iterator.index()
             {
                 // assign left child - down_left offset
-                array[active_index].inner.set_down_left(lc_index as i64 - seq as i64);
+                array[active_index].set_down_left(lc_index as i64 - seq as i64);
             }
             
             iterator.set_index(node_index);
@@ -590,44 +577,36 @@ impl<const D: usize> SparseGridData<D>
             if let Some(rc_index) = iterator.index()
             {
                 // assign right child - down_right offset
-                array[active_index].inner.set_down_right(rc_index as i64 - seq as i64);
-            } 
-            iterator.reset_to_left_level_zero(dim);            
-            // Handle left level zero
-            if let Some(lzero) = iterator.index() {                             
-                // we know what the correct index is...
-                // first let's find the leftmost node linked in our data structure.
-                let mut left_index = seq as u32;
-                while array[offset + left_index as usize].inner.has_left()
-                {
-                    left_index = (left_index as i64 + array[offset + left_index as usize].inner.left()) as u32;
-                }
-                // If the leftmost node isn't the boundary, we need to update our data structure
-                // such that if it has boundaries, we set its left boundary neighbor.
-                if left_index != lzero as u32
-                {
-                    array[offset + left_index as usize].inner.set_left(lzero as i64 - left_index as i64);
-                    array[offset + left_index as usize].inner.set_has_left(true);
-                }
-                array[active_index].left_zero = lzero as u32;
-            } 
-            iterator.reset_to_right_level_zero(dim);
-            if let Some(rzero) = iterator.index()
-            {
-                // first let's find the rightmost node linked in our data structure.
-                let mut right_index = seq as u32;
-                while array[offset + right_index as usize].inner.has_right()
-                {
-                    right_index = (right_index as i64 + array[offset + right_index as usize].inner.right()) as u32;
-                }
-                // If the rightmost node isn't the boundary, we need to update our data structure
-                // such that if it has boundaries, we set its right boundary neighbor.
-                if right_index != rzero as u32
-                {
-                    array[offset + right_index as usize].inner.set_right(rzero as i64 - right_index as i64);
-                    array[offset + right_index as usize].inner.set_has_right(true);
-                }
+                array[active_index].set_down_right(rc_index as i64 - seq as i64);
             }
+        }
+        
+        // Always populate boundary and level indices (even for complete nodes)
+        iterator.set_index(node_index);
+        iterator.reset_to_left_level_zero(dim);
+        if let Some(lzero) = iterator.index() {
+            left_zero[active_index] = lzero as u32;
+        }
+        else
+        {
+            left_zero[active_index] = u32::MAX;
+        }
+        iterator.reset_to_right_level_zero(dim);
+        if let Some(rzero) = iterator.index() {
+            right_zero[active_index] = rzero as u32;
+        }
+        else
+        {
+            right_zero[active_index] = u32::MAX;
+        }
+        iterator.set_index(node_index);
+        iterator.reset_to_level_one(dim);
+        if let Some(level_one_idx) = iterator.index() {
+            array[active_index].set_level_one(level_one_idx as u32);
+        }
+        else
+        {
+            array[active_index].set_level_one(u32::MAX); 
         }
     }
 }

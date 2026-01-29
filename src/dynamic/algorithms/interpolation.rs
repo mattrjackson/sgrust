@@ -18,7 +18,7 @@ impl InterpolationOperation<'_>
             {
                 iterator.reset_to_level_zero();
                 let xscaled = self.1.0.bounding_box.to_unit_coordinate(&x);
-                eval_boundary(self.1.0, &self.1.1, &xscaled, 0, T::from(1.0), iterator, alpha, result, x.len(), result.len())?;    
+                eval_boundary(self.1.0, &xscaled, 0, T::from(1.0), iterator, alpha, result, x.len(), result.len())?;    
                 Ok(())
                 },
             false =>  self.1.eval(x, alpha, iterator, result),

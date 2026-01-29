@@ -205,12 +205,24 @@ impl LinearGrid
         &self.0.values
     }
 
+    /// Create an interpolation state for repeated interpolation calls.
+    #[inline]
+    pub fn create_interpolation_state(&self) -> crate::dynamic::algorithms::interpolation_state::InterpolationState<'_>
+    {
+        self.0.create_interpolation_state()
+    }
+
     /// Interpolate on grid (single point). Checks that point lies within bounding box.
     pub fn interpolate(&self, x: &[f64], result: &mut [f64]) -> Result<(), SGError>
     {
         self.0.interpolate(x, result)
     }
-    
+
+    /// An optimized interpolation function that reuses state to avoid per-call overhead.
+    pub fn interpolate_with_state(&self, x: &[f64], state: &mut crate::dynamic::algorithms::interpolation_state::InterpolationState<'_>, result: &mut [f64]) -> Result<(), SGError>
+    {
+        self.0.interpolate_with_state(x, state, result)
+    }
     #[cfg(feature="rayon")]
     /// Interpolate on grid (multiple point). Checks that each point lies within bounding box.
     pub fn interpolate_batch(&self, x: &[f64]) -> Result<Vec<f64>, SGError>

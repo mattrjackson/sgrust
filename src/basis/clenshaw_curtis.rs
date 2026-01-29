@@ -1,4 +1,4 @@
-use static_init::dynamic;
+use std::sync::LazyLock;
 
 use super::base::Basis;
 
@@ -78,8 +78,7 @@ impl ClenshawCurtisCache
     }
 }
 
-#[dynamic]
-pub(crate) static CC_CACHE: ClenshawCurtisCache = ClenshawCurtisCache::new(CC_MAX_LEVEL) ;
+pub(crate) static CC_CACHE: LazyLock<ClenshawCurtisCache> = LazyLock::new(|| ClenshawCurtisCache::new(CC_MAX_LEVEL));
 
 #[derive(Clone, Copy)]
 pub struct ClenshawCurtis;

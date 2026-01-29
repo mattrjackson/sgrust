@@ -8,12 +8,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub(crate) struct NodeAdjacencyData
 {
     pub(crate) zero_index: usize,
-    pub(crate) data: Vec<NodeAdjacency>,
+    pub(crate) data: Vec<NodeAdjacencyInner>,
+    pub(crate) left_zero: Vec<u32>,
+    pub(crate) right_zero: Vec<u32>,
 }
 
 impl Deref for NodeAdjacencyData
 {
-    type Target=Vec<NodeAdjacency>;
+    type Target=Vec<NodeAdjacencyInner>;
 
     fn deref(&self) -> &Self::Target {
         &self.data
@@ -28,13 +30,8 @@ impl DerefMut for NodeAdjacencyData
 }
 
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
-pub(crate) struct NodeAdjacency
-{
-    pub(crate) inner: NodeAdjacencyInner,
-    pub(crate) left_zero: u32,
-}
+/// Legacy type alias for compatibility - now just the inner bitfield
+pub(crate) type NodeAdjacency = NodeAdjacencyInner;
 
 
 use bitfield_struct::bitfield;
@@ -42,28 +39,22 @@ use bitfield_struct::bitfield;
 #[bitfield(u128)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct NodeAdjacencyInner {
-    #[bits(25)]
-    pub(crate) left: i64,
-    #[bits(25)]
-    pub(crate) right: i64,
-    #[bits(25)]
+    #[bits(32)] 
+    pub(crate) level_one: u32,
+    #[bits(31)] 
     pub(crate) up: i64,
-    #[bits(25)]
+    #[bits(32)]
     pub(crate) down_left: i64,
-    #[bits(25)]
+    #[bits(32)]
     pub(crate) down_right: i64,
     #[bits(1)]
-    pub(crate) has_left: bool,
-    #[bits(1)]
-    pub(crate) has_right: bool,
-    #[bits(1)]
-    pub(crate) has_parent: bool,
+    pub(crate) has_parent: bool,    
 }
 impl NodeAdjacencyInner
 { 
     #[inline]
     pub fn is_complete(&self) -> bool {
-        self.has_left() && self.has_right() && self.has_left_child() && self.has_right_child() && self.has_parent()
+        self.has_left_child() && self.has_right_child() && self.has_parent()
     }
     
     #[inline]

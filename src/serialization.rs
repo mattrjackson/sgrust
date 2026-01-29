@@ -101,7 +101,7 @@ pub type HighValidator<'a, E> = rkyv::rancor::Strategy<
 /// 
 /// The type must derive `rkyv::Archive` and `rkyv::Serialize`.
 #[cfg(feature = "rkyv")]
-pub fn serialize_rkyv<T>(data: &T) -> Result<Vec<u8>, SGError> 
+fn serialize_rkyv<T>(data: &T) -> Result<Vec<u8>, SGError> 
 where 
     T: for<'a> rkyv::Serialize<HighSerializer<'a, rkyv::rancor::Error>>,
 {
@@ -112,7 +112,7 @@ where
 
 /// Serialize data to bytes using rkyv with LZ4 compression.
 #[cfg(feature = "rkyv")]
-pub fn serialize_rkyv_lz4<T>(data: &T) -> Result<Vec<u8>, SGError> 
+fn serialize_rkyv_lz4<T>(data: &T) -> Result<Vec<u8>, SGError> 
 where 
     T: for<'a> rkyv::Serialize<HighSerializer<'a, rkyv::rancor::Error>>,
 {
@@ -124,7 +124,7 @@ where
 /// 
 /// The type must derive `rkyv::Archive` and `rkyv::Deserialize`.
 #[cfg(feature = "rkyv")]
-pub fn deserialize_rkyv<T>(data: &[u8]) -> Result<T, SGError>
+fn deserialize_rkyv<T>(data: &[u8]) -> Result<T, SGError>
 where
     T: rkyv::Archive,
     T::Archived: rkyv::Deserialize<T, HighDeserializer<rkyv::rancor::Error>> 
@@ -136,7 +136,7 @@ where
 
 /// Deserialize data from bytes using rkyv with LZ4 decompression.
 #[cfg(feature = "rkyv")]
-pub fn deserialize_rkyv_lz4<T>(data: &[u8]) -> Result<T, SGError>
+fn deserialize_rkyv_lz4<T>(data: &[u8]) -> Result<T, SGError>
 where
     T: rkyv::Archive,
     T::Archived: rkyv::Deserialize<T, HighDeserializer<rkyv::rancor::Error>>
@@ -148,8 +148,31 @@ where
 }
 
 /// Serialize data to bytes using the specified format.
-/// Applies LZ4 compression if the format variant ends with Lz4.
-/// Note: For rkyv formats, use serialize_rkyv or serialize_rkyv_lz4 directly.
+#[cfg(feature = "rkyv")]
+pub fn serialize<T: Serialize>(data: &T, format: SerializationFormat) -> Result<Vec<u8>, SGError> 
+where 
+    T: Serialize + for<'a> rkyv::Serialize<HighSerializer<'a, rkyv::rancor::Error>>,
+{
+    
+    match format {
+        SerializationFormat::JsonLz4 | SerializationFormat::BitcodeLz4 => {
+            let bytes = serialize_serde(data, format)?;
+            Ok(lz4_flex::compress_prepend_size(&bytes))
+        },
+        SerializationFormat::RkyvLz4 => {
+            serialize_rkyv_lz4(data)
+        },
+        SerializationFormat::Rkyv => {
+            serialize_rkyv(data)
+        },
+        _ => {
+            let bytes = serialize_serde(data, format)?;
+            Ok(bytes)
+        }
+    }
+}
+
+#[cfg(not(feature = "rkyv"))]
 pub fn serialize<T: Serialize>(data: &T, format: SerializationFormat) -> Result<Vec<u8>, SGError> {
     let bytes = serialize_serde(data, format)?;
     match format {
@@ -160,9 +183,29 @@ pub fn serialize<T: Serialize>(data: &T, format: SerializationFormat) -> Result<
     }
 }
 
+#[cfg(feature = "rkyv")]
+pub fn deserialize<T: DeserializeOwned>(data: &[u8], format: SerializationFormat) -> Result<T, SGError> where 
+    T: DeserializeOwned + rkyv::Archive,
+    T::Archived: rkyv::Deserialize<T, HighDeserializer<rkyv::rancor::Error>>
+        + for<'a> rkyv::bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Error>>,{
+    match format {
+        SerializationFormat::JsonLz4 | SerializationFormat::BitcodeLz4 => {
+            let decompressed = lz4_flex::decompress_size_prepended(data)
+                .map_err(|_| SGError::LZ4DecompressionFailed)?;
+            deserialize_serde(&decompressed, format)
+        },
+        SerializationFormat::RkyvLz4 => {
+            deserialize_rkyv_lz4(data)
+        },
+        SerializationFormat::Rkyv => {
+            deserialize_rkyv(data)
+        },
+        _ => deserialize_serde(data, format),
+    }
+}
+
 /// Deserialize data from bytes using the specified format.
-/// Applies LZ4 decompression if the format variant ends with Lz4.
-/// Note: For rkyv formats, use deserialize_rkyv or deserialize_rkyv_lz4 directly.
+#[cfg(not(feature = "rkyv"))] 
 pub fn deserialize<T: DeserializeOwned>(data: &[u8], format: SerializationFormat) -> Result<T, SGError> {
     match format {
         SerializationFormat::JsonLz4 | SerializationFormat::BitcodeLz4 => {
@@ -176,13 +219,17 @@ pub fn deserialize<T: DeserializeOwned>(data: &[u8], format: SerializationFormat
 
 #[cfg(test)]
 mod tests {
+    use crate::utilities::float::RkyvMarker;
+
     use super::*;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+    #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
     struct TestData {
         values: Vec<f64>,
         name: String,
     }
+    impl RkyvMarker for TestData {}
 
     #[test]
     fn test_json_roundtrip() {

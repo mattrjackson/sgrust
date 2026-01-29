@@ -1,4 +1,4 @@
-use static_init::dynamic;
+use std::sync::LazyLock;
 
 use super::base::Basis;
 
@@ -77,8 +77,7 @@ impl GaussPattersonCache
     }
 }
 
-#[dynamic]
-static GP_CACHE: GaussPattersonCache = GaussPattersonCache::new(GP_MAX_LEVEL) ;
+static GP_CACHE: LazyLock<GaussPattersonCache> = LazyLock::new(|| GaussPattersonCache::new(GP_MAX_LEVEL));
 
 #[derive(Clone, Copy)]
 pub struct GaussPatterson;
