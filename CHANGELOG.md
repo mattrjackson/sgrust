@@ -10,6 +10,17 @@
 ### Fixed
 -->
 
+## [0.8.1] — 2026-01-30
+
+### Breaking
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Fixed bug in adjacency iterators, corrected incorrect boundary handling in coarsening. Still investigating why u32::MAX rarely returned by `right_zero`.
+
 ## [0.8.0] — 2026-01-29
 
 ### Breaking

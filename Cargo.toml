@@ -1,7 +1,7 @@
 [package]
 name = "sgrust"
-version = "0.8.0"
-edition = "2021"
+version = "0.8.1"
+edition = "2024"
 license = "MIT"
 keywords = ["sparsegrid", "interpolation"]
 description = "A sparse grid library written in Rust."

@@ -260,7 +260,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         let mut last_num_removed: usize;
         loop
         {            
-            last_num_removed =  self.coarsen_iteration(functor, threshold);                
+            // Remove boundary nodes during standalone coarsen calls
+            last_num_removed =  self.coarsen_iteration(functor, threshold, true);                
             total_num_removed += last_num_removed;
             if last_num_removed == 0
             {
@@ -276,11 +277,11 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         
     }
 
-    fn coarsen_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64) -> usize
+    fn coarsen_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64, remove_boundary: bool) -> usize
     {
         let mut total_num_removed = 0;
   
-        let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values, threshold);
+        let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values, threshold, remove_boundary);
         if r.len() != self.alpha.len()
         {
             let mut new_alpha = Vec::with_capacity(r.len());
@@ -302,7 +303,8 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
     {
         if options.refinement_mode == RefinementMode::Anisotropic
         {                 
-            self.coarsen_iteration(functor, options.threshold);
+            // Don't remove boundary nodes during iterative refine/coarsen - they may be needed by future refinements
+            self.coarsen_iteration(functor, options.threshold, false);
         }
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
@@ -356,7 +358,7 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         {
             if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
             {                 
-                self.coarsen_iteration(functor, options.threshold);                
+                self.coarsen_iteration(functor, options.threshold, true);                
             }
             let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
             if indices.is_empty()

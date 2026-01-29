@@ -1,10 +1,6 @@
 
 use crate::const_generic::storage::{GridPoint, SparseGridData};
-
 use super::grid_iterator::GridIteratorT;
-
-
-
 ///
 /// This iterator uses array access to retrieve neighbors more quickly (~10x speedup relative to hash queries)
 /// at the expense of pretty significant memory overhead. Eventually the data behind building the iterator
@@ -26,7 +22,14 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     pub fn compute_lzero(&self, dim: usize) -> Option<u32> {      
         let index = self.seq;
         let offset = self.offset(dim);  
-        Some(self.storage.adjacency_data.left_zero[offset + index])  
+        let index = self.storage.adjacency_data.left_zero[offset + index];
+        if index == u32::MAX {
+            return None;
+        }
+        else
+        {
+            Some(index)  
+        }
     }
     
     /// Compute the index of the right boundary node (e.g. the right zero-level node) for the given dimension.
@@ -34,7 +37,14 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     pub fn compute_rzero(&self, dim: usize) -> Option<u32> {
         let index = self.seq;
         let offset = self.offset(dim);  
-        Some(self.storage.adjacency_data.right_zero[offset + index])  
+        let index = self.storage.adjacency_data.right_zero[offset + index];
+        if index == u32::MAX {
+            return None;
+        }
+        else
+        {
+            Some(index)  
+        }
     }
     pub(crate) fn new(storage: &'a SparseGridData<D>) -> Self
     {
@@ -90,7 +100,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
     {
         if let Some(index) = self.compute_rzero(dim)
-        {           
+        {
             self.seq = index as usize;            
             self.is_leaf = self.storage[index as usize].is_leaf();
             true

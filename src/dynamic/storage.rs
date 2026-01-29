@@ -651,6 +651,7 @@ impl SparseGridData
         self.flags = flags;
         self.generate_map();
         self.update_leaves();
+        self.generate_adjacency_data();
     }
 
     fn update_leaves(&mut self)
@@ -674,10 +675,16 @@ impl SparseGridData
                     }                
                 }
                 else
-                // don't remove boundary nodes (eventually update this to only remove non-essential boundary nodes)
                 {
-                    is_leaf = false;
-                    break;
+                    // Boundary node in this dimension - check for level-1 child
+                    let mut child = point.clone();
+                    child.level[dim] = 1;
+                    child.index[dim] = 1;
+                    if self.map.contains_key(&child.into())
+                    {
+                        is_leaf = false;
+                        break;
+                    }
                 }
             }                
             self.flags[i].set_is_leaf(is_leaf);          

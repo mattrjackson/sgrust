@@ -74,7 +74,7 @@ impl GridIteratorT for AdjacencyGridIterator<'_>
     #[inline]
     fn reset_to_left_level_zero(&mut self, dim: usize) -> bool
     {
-        if let Some(index) = self.compute_lzero(dim)
+        if let Some(index) = self.compute_lzero(dim) && index != u32::MAX
         {
             self.seq = index as usize;
             self.index = &self.storage.index[self.storage.num_inputs*index as usize..];
@@ -88,7 +88,7 @@ impl GridIteratorT for AdjacencyGridIterator<'_>
     #[inline]
     fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
     {
-        if let Some(index) = self.compute_rzero(dim)
+        if let Some(index) = self.compute_rzero(dim) && index != u32::MAX
         {           
             self.seq = index as usize;      
             self.index = &self.storage.index[self.storage.num_inputs*index as usize..];      
