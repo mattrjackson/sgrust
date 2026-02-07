@@ -9,6 +9,16 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.2] — 2026-02-07
+
+### Breaking
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Fixed bug in `len()` function for `CombinationSparseGrid` when ndim=0 (now returns 0)
 
 ## [0.8.1] — 2026-01-30
 

@@ -300,7 +300,14 @@ impl CombinationSparseGrid
 
     pub fn len(&self) -> usize
     {
-        self.nodes.len() / self.ndim
+        if self.ndim == 0
+        {
+            return 0;
+        }
+        else
+        {
+            self.nodes.len() / self.ndim
+        }
     }
 
     #[must_use]
