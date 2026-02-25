@@ -14,16 +14,72 @@ use super::{linear_grid::LinearGrid};
 /// Immutable variant of `LinearGrid` that only supports interpolation and integration. Smaller memory footprint, as we only store the data needed for
 /// these two operations, as compared to `LinearGrid`, which supports refinement and coarsening operations.
 /// 
+// Private helper struct used only to drive serde deserialization so that
+// `From` can call `update_adjacency_data()` after the fields are populated.
+// `serde_as` is required here because serde only supports arrays up to [T; 32]
+// by default, not const-generic sizes.
 #[serde_as]
-#[derive(Default, Serialize, serde::Deserialize, Clone)]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[derive(serde::Deserialize)]
+struct ImmutableLinearGridData<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
+{
+    storage: SparseGridData<D>,
+    #[serde_as(as = "Vec<[_; DIM_OUT]>")]
+    alpha: Vec<[T; DIM_OUT]>,
+    #[serde_as(as = "Vec<[_; DIM_OUT]>")]
+    values: Vec<[T; DIM_OUT]>,
+}
+
+#[serde_as]
+#[derive(Default, Serialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize))]
 pub struct ImmutableLinearGrid<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
 {
     storage: SparseGridData<D>,
     #[serde_as(as = "Vec<[_; DIM_OUT]>")]
     alpha: Vec<[T; DIM_OUT]>,
     #[serde_as(as = "Vec<[_; DIM_OUT]>")]
-    values: Vec<[T; DIM_OUT]>,     
+    values: Vec<[T; DIM_OUT]>,
+}
+
+impl<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
+    From<ImmutableLinearGridData<T, D, DIM_OUT>> for ImmutableLinearGrid<T, D, DIM_OUT>
+{
+    fn from(data: ImmutableLinearGridData<T, D, DIM_OUT>) -> Self {
+        let mut grid = Self { storage: data.storage, alpha: data.alpha, values: data.values };
+        grid.update_adjacency_data();
+        grid
+    }
+}
+
+// Direct field-type bounds (same as a derived impl would produce) let Rust prove
+// `ImmutableLinearGrid: DeserializeOwned` without hitting serde_with indirection issues.
+impl<'de, T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize>
+    serde::Deserialize<'de> for ImmutableLinearGrid<T, D, DIM_OUT>
+where
+    SparseGridData<D>: serde::Deserialize<'de>,
+{
+    fn deserialize<De: serde::Deserializer<'de>>(deserializer: De) -> Result<Self, De::Error> {
+        ImmutableLinearGridData::<T, D, DIM_OUT>::deserialize(deserializer).map(Into::into)
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<__D: rkyv::rancor::Fallible + ?Sized, T, const D: usize, const DIM_OUT: usize>
+    rkyv::Deserialize<ImmutableLinearGrid<T, D, DIM_OUT>, __D>
+    for rkyv::Archived<ImmutableLinearGrid<T, D, DIM_OUT>>
+where
+    T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync,
+    rkyv::Archived<SparseGridData<D>>: rkyv::Deserialize<SparseGridData<D>, __D>,
+    rkyv::Archived<Vec<[T; DIM_OUT]>>: rkyv::Deserialize<Vec<[T; DIM_OUT]>, __D>,
+{
+    fn deserialize(&self, deserializer: &mut __D) -> Result<ImmutableLinearGrid<T, D, DIM_OUT>, __D::Error> {
+        let storage: SparseGridData<D> = rkyv::Deserialize::deserialize(&self.storage, deserializer)?;
+        let alpha: Vec<[T; DIM_OUT]> = rkyv::Deserialize::deserialize(&self.alpha, deserializer)?;
+        let values: Vec<[T; DIM_OUT]> = rkyv::Deserialize::deserialize(&self.values, deserializer)?;
+        let mut grid = ImmutableLinearGrid { storage, alpha, values };
+        grid.update_adjacency_data();
+        Ok(grid)
+    }
 }
 
 impl<T: Float + std::ops::AddAssign + serde::Serialize + for<'a> serde::Deserialize<'a> + Send + Sync, const D: usize, const DIM_OUT: usize> ImmutableLinearGrid<T, D, DIM_OUT>

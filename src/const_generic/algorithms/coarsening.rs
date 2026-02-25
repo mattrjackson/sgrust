@@ -1,19 +1,19 @@
 use indexmap::IndexSet;
 
-use crate::const_generic::storage::SparseGridData;
+use crate::const_generic::{iterators::grid_iterator::{GridIteratorT, HashMapGridIterator}, storage::SparseGridData};
 
 use super::refinement::RefinementFunctor;
 
 /// Determines which boundary nodes are required by kept inner nodes.
 /// A boundary node is required if any kept inner node references it via left_zero or right_zero.
-fn find_required_boundary_nodes<const D: usize>(storage: &SparseGridData<D>, kept_points: &IndexSet<usize>) -> IndexSet<usize>
+fn find_required_boundary_nodes<const D: usize>(iterator: &mut HashMapGridIterator<D>, storage: &SparseGridData<D>, kept_points: &IndexSet<usize>) -> IndexSet<usize>
 {
     let mut required_boundary = IndexSet::new();
     
     for &seq in kept_points.iter()
     {
         let point = &storage.nodes()[seq];
-        
+        iterator.set_index(*point);
         // Only inner nodes have left_zero/right_zero dependencies
         if !point.is_inner_point()
         {
@@ -22,18 +22,16 @@ fn find_required_boundary_nodes<const D: usize>(storage: &SparseGridData<D>, kep
         
         for dim in 0..D
         {
-            let offset = dim * storage.len();
-            let left_zero_idx = storage.adjacency_data.left_zero[offset + seq];
-            let right_zero_idx = storage.adjacency_data.right_zero[offset + seq];
-            
-            if left_zero_idx != u32::MAX
+            if iterator.reset_to_left_level_zero(dim)
             {
-                required_boundary.insert(left_zero_idx as usize);
+                required_boundary.insert(iterator.index().unwrap());    
             }
-            if right_zero_idx != u32::MAX
+            if iterator.reset_to_right_level_zero(dim)
             {
-                required_boundary.insert(right_zero_idx as usize);
+                required_boundary.insert(iterator.index().unwrap());
             }
+            // reset back to original point for next dimension
+            iterator.set_index(*point);
         }
     }
     
@@ -52,10 +50,12 @@ fn find_required_boundary_nodes<const D: usize>(storage: &SparseGridData<D>, kep
 ///
 /// # Returns
 /// IndexSet containing the indices of points that were kept
-pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], threshold: f64, remove_boundary: bool) -> IndexSet<usize>
+pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], threshold: f64, remove_boundary: bool) -> IndexSet<usize>
 {
+    let mut iterator = HashMapGridIterator::new(storage);
     let mut kept_points = IndexSet::default();
-    let zero_index = storage.adjacency_data.zero_index;
+    iterator.reset_to_level_zero();
+    let zero_index = iterator.index().unwrap();
     let values = functor.eval(storage.points(), alpha, values);
     
     // First pass: determine which inner nodes to keep
@@ -81,7 +81,7 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>(storage: &mut Sparse
     if remove_boundary
     {
         // Find which boundary nodes are required by kept inner nodes
-        let required_boundary = find_required_boundary_nodes(storage, &kept_points);
+        let required_boundary = find_required_boundary_nodes(&mut iterator, storage, &kept_points);
         
         // Add boundary nodes based on various criteria
         for (seq, (point, r)) in storage.nodes().iter().zip(values.iter()).enumerate()

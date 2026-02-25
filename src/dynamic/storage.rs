@@ -1,6 +1,6 @@
 use std::{hash::{Hash, Hasher}, u32};
 use nohash_hasher::BuildNoHashHasher;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use bitfield_struct::bitfield;

@@ -38,9 +38,36 @@ impl<const D: usize> Generator<D> for LinearGridGenerator<D>
 }
 
 #[serde_as]
-#[derive(Default, Serialize, Deserialize, Clone)]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[derive(Default, Serialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize))]
 pub struct LinearGrid<const D: usize, const DIM_OUT: usize>(pub(crate) SparseGridBase<D, DIM_OUT>);
+
+#[cfg(feature = "rkyv")]
+impl<__D: rkyv::rancor::Fallible + ?Sized, const D: usize, const DIM_OUT: usize>
+    rkyv::Deserialize<LinearGrid<D, DIM_OUT>, __D>
+    for rkyv::Archived<LinearGrid<D, DIM_OUT>>
+where
+    rkyv::Archived<SparseGridBase<D, DIM_OUT>>: rkyv::Deserialize<SparseGridBase<D, DIM_OUT>, __D>,
+{
+    fn deserialize(&self, deserializer: &mut __D) -> Result<LinearGrid<D, DIM_OUT>, __D::Error> {
+        let base: SparseGridBase<D, DIM_OUT> = rkyv::Deserialize::deserialize(&self.0, deserializer)?;
+        let mut grid = LinearGrid(base);
+        grid.update_adjacency_data();
+        Ok(grid)
+    }
+}
+
+impl<'de, const D: usize, const DIM_OUT: usize> Deserialize<'de> for LinearGrid<D, DIM_OUT>
+where
+    SparseGridBase<D, DIM_OUT>: Deserialize<'de>,
+{
+    fn deserialize<De: serde::Deserializer<'de>>(deserializer: De) -> Result<Self, De::Error> {
+        let base = SparseGridBase::<D, DIM_OUT>::deserialize(deserializer)?;
+        let mut grid = Self(base);
+        grid.update_adjacency_data();
+        Ok(grid)
+    }
+}
 
 impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
 {

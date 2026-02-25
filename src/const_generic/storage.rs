@@ -3,6 +3,7 @@ use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use bitfield_struct::bitfield;
+use wide::{CmpGt, CmpLt};
 use crate::const_generic::iterators::grid_iterator::{GridIteratorT, HashMapGridIterator};
 use nohash_hasher::BuildNoHashHasher;
 use crate::adjacency_data::{NodeAdjacency, NodeAdjacencyData};
@@ -260,10 +261,30 @@ impl<const D: usize> BoundingBox<D>
     #[inline]
     pub fn to_unit_coordinate(&self, point: &[f64; D]) -> [f64; D]
     {
-        let mut r = [0.0;D];
-        for i in 0..D
-        {
-            r[i] = (point[i] - self.lower[i])/(self.upper[i] - self.lower[i]);
+        use wide::f64x4;
+        let mut r = [0.0; D];
+        let mut i = 0;
+        while i + 4 <= D {
+            let p  = f64x4::from([point[i],       point[i+1],       point[i+2],       point[i+3]]);
+            let lo = f64x4::from([self.lower[i],   self.lower[i+1],  self.lower[i+2],  self.lower[i+3]]);
+            let hi = f64x4::from([self.upper[i],   self.upper[i+1],  self.upper[i+2],  self.upper[i+3]]);
+            let res: [f64; 4] = ((p - lo) / (hi - lo)).into();
+            r[i..i+4].copy_from_slice(&res);
+            i += 4;
+        }
+        let rem = D - i;
+        if rem > 2 {
+            // rem == 3: pad lane 3 with safe values (0/1) so no NaN
+            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      0.0]);
+            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], 0.0]);
+            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], 1.0]);
+            let res: [f64; 4] = ((p - lo) / (hi - lo)).into();
+            r[i] = res[0]; r[i+1] = res[1]; r[i+2] = res[2];
+        } else {
+            while i < D {
+                r[i] = (point[i] - self.lower[i]) / (self.upper[i] - self.lower[i]);
+                i += 1;
+            }
         }
         r
     }
@@ -280,12 +301,33 @@ impl<const D: usize> BoundingBox<D>
     #[inline]
     pub fn contains(&self, point: &[f64; D]) -> bool
     {
-        #[allow(clippy::needless_range_loop)]
-        for d in 0..D
-        {
-            if self.lower[d] > point[d] || self.upper[d] < point[d]
-            {
+        use wide::f64x4;
+        let mut i = 0;
+        while i + 4 <= D {
+            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      point[i+3]]);
+            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], self.lower[i+3]]);
+            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], self.upper[i+3]]);
+            // any lane set means out-of-bounds in that dimension
+            if (lo.simd_gt(p) | hi.simd_lt(p)).to_bitmask() != 0 {
                 return false;
+            }
+            i += 4;
+        }
+        let rem = D - i;
+        if rem > 2 {
+            // rem == 3: pad lane 3 with lower[i] as the point so it is always in-bounds
+            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      self.lower[i]]);
+            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], self.lower[i]]);
+            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], self.upper[i]]);
+            if (lo.simd_gt(p) | hi.simd_lt(p)).to_bitmask() != 0 {
+                return false;
+            }
+        } else {
+            while i < D {
+                if self.lower[i] > point[i] || self.upper[i] < point[i] {
+                    return false;
+                }
+                i += 1;
             }
         }
         true

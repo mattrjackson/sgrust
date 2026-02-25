@@ -7,9 +7,6 @@ use crate::dynamic::iterators::grid_iterator_cache::AdjacencyGridIterator;
 use crate::dynamic::iterators::dynamic_grid_iterator::GridIteratorT;
 use crate::dynamic::storage::SparseGridData;
 
-/// Maximum supported dimensions for stack-based arrays
-const MAX_DIM: usize = 32;
-
 /// Reusable state for interpolation to eliminate per-call overhead.
 /// 
 /// Create once from a grid and reuse for many interpolation calls.
@@ -38,6 +35,7 @@ impl<'a> InterpolationState<'a> {
     
     /// Reset the state for a new interpolation (called internally)
     #[inline]
+    #[allow(unused)]
     pub(crate) fn reset(&mut self) {
         self.iterator.reset_to_level_zero();
     }

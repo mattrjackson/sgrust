@@ -17,11 +17,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             let new_value = T::from(basis[dim].eval(level, work_index, x[dim]));
             if dim == D - 1
             {
-                #[allow(clippy::needless_range_loop)]
-                for i in 0..DIM_OUT
-                {
-                    result[i] += alpha[node_index][i] * value * new_value;
-                }
+                T::accumulate(result, &alpha[node_index], value * new_value);
             }
             else 
             {
@@ -39,11 +35,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
                 let new_value_l = T::from(basis[dim].eval(0, 0, x[dim]));
                 if dim == D - 1
                 {
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..DIM_OUT
-                    {
-                        result[i] += alpha[seq_l][i] * value * new_value_l;
-                    }
+                    T::accumulate(result, &alpha[seq_l], value * new_value_l);
                 }
                 else 
                 {
@@ -57,11 +49,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
                 let new_value_r = T::from(basis[dim].eval(0, 1, x[dim]));
                 if dim == D - 1
                 {
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..DIM_OUT
-                    {
-                        result[i] += alpha[seq_r][i] * value * new_value_r;
-                    }
+                    T::accumulate(result, &alpha[seq_r], value * new_value_r);
                 }
                 else 
                 {

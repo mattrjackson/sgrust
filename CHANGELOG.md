@@ -9,6 +9,19 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.3] — 2026-02-24
+
+### Breaking
+### Security
+### Added
+Added SIMD support
+Updated rkyv and serde deserialize methods that ensure `update_adjacency_data` is run.
+### Changed
+### Deprecated
+### Removed
+### Fixed
+Correct bug in `find_required_boundary_nodes` used by coarsening feature.
+
 # [0.8.2] — 2026-02-07
 
 ### Breaking

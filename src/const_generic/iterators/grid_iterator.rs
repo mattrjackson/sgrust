@@ -41,7 +41,7 @@ impl<'a, const D: usize> HashMapGridIterator<'a, D>
         self.seq = self.storage.index_of(&self.index);
     }
 
-    
+    #[allow(unused)]
     pub(crate) fn step_left(&mut self, dim: usize)
     {
         let i = self.index.index[dim];     

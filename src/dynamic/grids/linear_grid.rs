@@ -38,9 +38,36 @@ impl Generator for LinearGridGenerator
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Clone)]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[derive(Serialize, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize))]
 pub struct LinearGrid(pub(crate) SparseGridBase);
+
+impl<'de> Deserialize<'de> for LinearGrid
+where
+    SparseGridBase: Deserialize<'de>,
+{
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let base = SparseGridBase::deserialize(deserializer)?;
+        let mut grid = Self(base);
+        grid.0.storage.generate_adjacency_data();
+        Ok(grid)
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<__D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::Deserialize<LinearGrid, __D>
+    for rkyv::Archived<LinearGrid>
+where
+    rkyv::Archived<SparseGridBase>: rkyv::Deserialize<SparseGridBase, __D>,
+{
+    fn deserialize(&self, deserializer: &mut __D) -> Result<LinearGrid, __D::Error> {
+        let base: SparseGridBase = rkyv::Deserialize::deserialize(&self.0, deserializer)?;
+        let mut grid = LinearGrid(base);
+        grid.0.storage.generate_adjacency_data();
+        Ok(grid)
+    }
+}
 
 impl LinearGrid
 {
@@ -140,12 +167,16 @@ impl LinearGrid
     }
     
     pub fn read<Reader: std::io::Read>(reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::read(reader, format)?))
+        let mut grid = Self(SparseGridBase::read(reader, format)?);
+        grid.0.storage.generate_adjacency_data();
+        Ok(grid)
     }
-    
+
     pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
-        Ok(Self(SparseGridBase::read_buffer(buffer, format)?))
-    }    
+        let mut grid = Self(SparseGridBase::read_buffer(buffer, format)?);
+        grid.0.storage.generate_adjacency_data();
+        Ok(grid)
+    }
 
      /// Get the surplus coefficients for this grid.
     pub fn alpha(&self) -> &[f64]
