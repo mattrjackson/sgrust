@@ -23,6 +23,8 @@ pub trait Float : Into<f64> + Copy + Mul<Output = Self> + Div<Output = Self> + A
     fn log10(&self) -> Self;
     fn powf(&self, power: Self) -> Self;
     fn max(&self, other: Self) -> Self;
+    fn abs(&self) -> Self;
+    fn min(&self, other: Self) -> Self;
     /// Accumulates `result[i] += alpha[i] * scale` for all i.
     /// Default implementation is scalar; f64/f32 override with SIMD via the `wide` crate.
     fn accumulate(result: &mut [Self], alpha: &[Self], scale: Self) {
@@ -65,6 +67,10 @@ impl Float for f64{
         f64::max(*self, other)
     }
 
+    fn abs(&self) -> Self {
+        f64::abs(*self)
+    }
+
     fn exp(&self) -> Self {
         f64::exp(*self)
     }
@@ -81,19 +87,15 @@ impl Float for f64{
             result[i..i + 4].copy_from_slice(&sum);
             i += 4;
         }
-        let rem = n - i;
-        if rem > 2 {
-            // rem == 3: one zero-padded SIMD op beats 3 scalar multiply-adds
-            let a = f64x4::from([alpha[i], alpha[i + 1], alpha[i + 2], 0.0]);
-            let r = f64x4::from([result[i], result[i + 1], result[i + 2], 0.0]);
-            let sum: [f64; 4] = (r + a * scale4).into();
-            result[i] = sum[0]; result[i + 1] = sum[1]; result[i + 2] = sum[2];
-        } else {
-            while i < n {
-                result[i] += alpha[i] * scale;
-                i += 1;
-            }
+        while i < n {
+            result[i] += alpha[i] * scale;
+            i += 1;
         }
+        
+    }
+    
+    fn min(&self, other: Self) -> Self {
+        f64::min(*self, other)
     }
 }
 
@@ -131,34 +133,34 @@ impl Float for f32
         f32::max(*self, other)
     }
 
+    fn abs(&self) -> Self {
+        f32::abs(*self)
+    }
+
     fn exp(&self) -> Self {
         f32::exp(*self)
     }
 
+    fn min(&self, other: Self) -> Self {
+        f32::min(*self, other)
+    }
+
+    #[inline]
     fn accumulate(result: &mut [f32], alpha: &[f32], scale: f32) {
-        use wide::f32x4;
+        use wide::f32x8;
         let n = result.len();
-        let scale4 = f32x4::splat(scale);
+        let scale8 = f32x8::splat(scale);
         let mut i = 0;
-        while i + 4 <= n {
-            let a = f32x4::from([alpha[i], alpha[i + 1], alpha[i + 2], alpha[i + 3]]);
-            let r = f32x4::from([result[i], result[i + 1], result[i + 2], result[i + 3]]);
-            let sum: [f32; 4] = (r + a * scale4).into();
-            result[i..i + 4].copy_from_slice(&sum);
-            i += 4;
+        while i + 8 <= n {
+            let a = f32x8::from(&alpha[i..i + 8]);
+            let r = f32x8::from(&result[i..i + 8]);
+            let sum: [f32; 8] = (r + a * scale8).into();
+            result[i..i + 8].copy_from_slice(&sum);
+            i += 8;
         }
-        let rem = n - i;
-        if rem > 2 {
-            // rem == 3: one zero-padded SIMD op beats 3 scalar multiply-adds
-            let a = f32x4::from([alpha[i], alpha[i + 1], alpha[i + 2], 0.0]);
-            let r = f32x4::from([result[i], result[i + 1], result[i + 2], 0.0]);
-            let sum: [f32; 4] = (r + a * scale4).into();
-            result[i] = sum[0]; result[i + 1] = sum[1]; result[i + 2] = sum[2];
-        } else {
-            while i < n {
-                result[i] += alpha[i] * scale;
-                i += 1;
-            }
+        while i < n {
+            result[i] += alpha[i] * scale;
+            i += 1;
         }
     }
 }

@@ -39,16 +39,18 @@ use bitfield_struct::bitfield;
 #[bitfield(u128)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct NodeAdjacencyInner {
-    #[bits(32)] 
-    pub(crate) level_one: u32,
-    #[bits(31)] 
-    pub(crate) up: i64,
     #[bits(32)]
+    pub(crate) level_one: u32,
+    #[bits(31)]
+    pub(crate) up: i64,
+    #[bits(31)]
     pub(crate) down_left: i64,
     #[bits(32)]
     pub(crate) down_right: i64,
     #[bits(1)]
-    pub(crate) has_parent: bool,    
+    pub(crate) has_parent: bool,
+    #[bits(1)]
+    pub(crate) is_leaf: bool,
 }
 impl NodeAdjacencyInner
 { 

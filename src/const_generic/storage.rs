@@ -265,27 +265,17 @@ impl<const D: usize> BoundingBox<D>
         let mut r = [0.0; D];
         let mut i = 0;
         while i + 4 <= D {
-            let p  = f64x4::from([point[i],       point[i+1],       point[i+2],       point[i+3]]);
-            let lo = f64x4::from([self.lower[i],   self.lower[i+1],  self.lower[i+2],  self.lower[i+3]]);
-            let hi = f64x4::from([self.upper[i],   self.upper[i+1],  self.upper[i+2],  self.upper[i+3]]);
-            let res: [f64; 4] = ((p - lo) / (hi - lo)).into();
-            r[i..i+4].copy_from_slice(&res);
+            let p = f64x4::from(&point[i..i+4]);            
+            let lo = f64x4::from(&self.lower[i..i+4]);
+            let hi = f64x4::from(&self.upper[i..i+4]);
+            let res = (p - lo) / (hi - lo);
+            r[i..i+4].copy_from_slice(res.as_array());
             i += 4;
         }
-        let rem = D - i;
-        if rem > 2 {
-            // rem == 3: pad lane 3 with safe values (0/1) so no NaN
-            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      0.0]);
-            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], 0.0]);
-            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], 1.0]);
-            let res: [f64; 4] = ((p - lo) / (hi - lo)).into();
-            r[i] = res[0]; r[i+1] = res[1]; r[i+2] = res[2];
-        } else {
-            while i < D {
-                r[i] = (point[i] - self.lower[i]) / (self.upper[i] - self.lower[i]);
-                i += 1;
-            }
-        }
+        while i < D {
+            r[i] = (point[i] - self.lower[i]) / (self.upper[i] - self.lower[i]);
+            i += 1;
+        }        
         r
     }
     #[inline]
@@ -304,31 +294,20 @@ impl<const D: usize> BoundingBox<D>
         use wide::f64x4;
         let mut i = 0;
         while i + 4 <= D {
-            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      point[i+3]]);
-            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], self.lower[i+3]]);
-            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], self.upper[i+3]]);
+            let p  = f64x4::from(&point[i..i+4]);
+            let lo = f64x4::from(&self.lower[i..i+4]);
+            let hi = f64x4::from(&self.upper[i..i+4]);
             // any lane set means out-of-bounds in that dimension
             if (lo.simd_gt(p) | hi.simd_lt(p)).to_bitmask() != 0 {
                 return false;
             }
             i += 4;
         }
-        let rem = D - i;
-        if rem > 2 {
-            // rem == 3: pad lane 3 with lower[i] as the point so it is always in-bounds
-            let p  = f64x4::from([point[i],      point[i+1],      point[i+2],      self.lower[i]]);
-            let lo = f64x4::from([self.lower[i],  self.lower[i+1], self.lower[i+2], self.lower[i]]);
-            let hi = f64x4::from([self.upper[i],  self.upper[i+1], self.upper[i+2], self.upper[i]]);
-            if (lo.simd_gt(p) | hi.simd_lt(p)).to_bitmask() != 0 {
+        while i < D {
+            if self.lower[i] > point[i] || self.upper[i] < point[i] {
                 return false;
             }
-        } else {
-            while i < D {
-                if self.lower[i] > point[i] || self.upper[i] < point[i] {
-                    return false;
-                }
-                i += 1;
-            }
+            i += 1;
         }
         true
     }
@@ -621,7 +600,7 @@ impl<const D: usize> SparseGridData<D>
             }
             
             iterator.set_index(node_index);
-            // get right child        
+            // get right child
             iterator.right_child(dim);
             if let Some(rc_index) = iterator.index()
             {
@@ -629,7 +608,8 @@ impl<const D: usize> SparseGridData<D>
                 array[active_index].set_down_right(rc_index as i64 - seq as i64);
             }
         }
-        
+        array[active_index].set_is_leaf(!array[active_index].has_left_child() && !array[active_index].has_right_child());
+
         // Always populate boundary and level indices (even for complete nodes)
         iterator.set_index(node_index);
         iterator.reset_to_left_level_zero(dim);

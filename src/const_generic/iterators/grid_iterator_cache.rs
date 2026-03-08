@@ -8,7 +8,7 @@ use super::grid_iterator::GridIteratorT;
 /// 
 pub(crate) struct AdjacencyGridIterator<'a, const D: usize>
 {
-    pub(crate) seq: usize,    
+    pub(crate) seq: usize,
     storage: &'a SparseGridData<D>,
     is_leaf: bool,
 }
@@ -48,7 +48,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     }
     pub(crate) fn new(storage: &'a SparseGridData<D>) -> Self
     {
-        Self { seq: 0, storage, is_leaf: storage[0].is_leaf()}
+        Self { seq: 0, storage, is_leaf: storage[0].is_leaf() }
     }
     #[inline(always)]
     fn offset(&self, dim: usize) -> usize
@@ -77,7 +77,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
 {
     #[inline]
     fn reset_to_level_zero(&mut self) -> bool
-    {   
+    {
         self.seq = self.storage.adjacency_data.zero_index;
         self.is_leaf = self.storage[self.storage.adjacency_data.zero_index].is_leaf();
         true
@@ -88,28 +88,28 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         if let Some(index) = self.compute_lzero(dim)
         {
             self.seq = index as usize;
-            self.is_leaf = self.storage[index as usize].is_leaf();
+            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
             true
         }
         else
         {
             false
-        }        
+        }
     }
     #[inline]
     fn reset_to_right_level_zero(&mut self, dim: usize) -> bool
     {
         if let Some(index) = self.compute_rzero(dim)
         {
-            self.seq = index as usize;            
-            self.is_leaf = self.storage[index as usize].is_leaf();
+            self.seq = index as usize;
+            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
             true
         }
         else
         {
             false
-        }     
-    } 
+        }
+    }
 
     #[inline]
     fn reset_to_level_one(&mut self, dim: usize) -> bool
@@ -120,7 +120,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
             return false;
         }
         self.seq = index as usize;
-        self.is_leaf = self.storage[index as usize].is_leaf();
+        self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
         true
     }
     #[inline]
@@ -131,7 +131,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + adj.down_left()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage[index].is_leaf();                
+            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index].is_leaf();
             true
         }
         else
@@ -147,7 +147,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + adj.down_right()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage[index].is_leaf();                
+            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index].is_leaf();
             true
         }
         else
@@ -173,7 +173,7 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + self.storage.adjacency_data[offset + self.seq].up()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage[index].is_leaf();
+            self.is_leaf = self.storage.adjacency_data[offset + index].is_leaf();
             true
         }
         else

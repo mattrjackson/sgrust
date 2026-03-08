@@ -6,6 +6,15 @@ use crate::const_generic::storage::SparseGridData;
 
 use super::base::Basis;
 
+/// Precomputed powers of two as f64: POW2_F64[i] = (2^i) as f64.
+/// Eliminates the variable shift + vcvtsi2sd latency stall on the hot path.
+pub(crate) const POW2_F64: [f64; 32] = {
+    let mut t = [0.0f64; 32];
+    let mut i = 0u32;
+    while i < 32 { t[i as usize] = (1u64 << i) as f64; i += 1; }
+    t
+};
+
 #[derive(Copy, Clone)]
 pub struct LinearBasis;
 
@@ -52,11 +61,22 @@ impl Basis for LinearBasis
             // index is 0 or 1, so: if 0 => 1.0 - x, if 1 => x
             (1.0 - x) * (1 - index) as f64 + x * index as f64
         } else {
-            // Avoid repeated computation and function calls
-            let scale = (1 << level) as f64;
-            let center = index as f64 / scale;
-            let dist = (x - center).abs();
-            (1.0 - dist * scale).max(0.0)
+            let scale = POW2_F64[level as usize];
+            let dist = (x * scale - index as f64).abs();
+            (1.0 - dist).max(0.0)
+        }
+    }
+
+    #[inline]
+    fn eval_t<T: Float>(&self, level: u32, index: u32, x: T) -> T {
+        if level == 0 {
+            // index is 0 or 1: branchless formula
+            (T::from(1.0) - x) * T::from((1 - index) as f64) + x * T::from(index as f64)
+        } else {
+            // scale from table — no variable shift, no int→float conversion on critical path
+            let scale = T::from(POW2_F64[level as usize]);
+            let dist = (x * scale - T::from(index as f64)).abs();
+            (T::from(1.0) - dist).max(T::from(0.0))
         }
     }
 

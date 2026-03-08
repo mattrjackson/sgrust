@@ -1,8 +1,15 @@
 use serde::{Deserialize, Serialize};
+use crate::utilities::float::Float;
 
 pub trait Basis
 {
     fn eval(&self, level: u32, index: u32, x: f64) -> f64;
+    /// Evaluate the basis function in T's native precision.
+    /// Default implementation converts through f64; override for zero-cost evaluation.
+    #[inline]
+    fn eval_t<T: Float>(&self, level: u32, index: u32, x: T) -> T {
+        T::from(self.eval(level, index, x.to_f64()))
+    }
     fn eval_deriv(&self, level: u32, index: u32, x: f64) -> f64;
     fn degree(&self) -> usize;
     fn integral(&self, level: u32, index: u32) -> f64; 

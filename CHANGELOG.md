@@ -9,6 +9,19 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.4] — 2026-03-07
+
+### Breaking
+### Security
+### Added
+### Changed
+Further improvement to SIMD support after profiling. 
+### Deprecated
+### Removed
+### Fixed
+Complete implementation of Float trait (added abs() and min())
+
+
 # [0.8.3] — 2026-02-24
 
 ### Breaking

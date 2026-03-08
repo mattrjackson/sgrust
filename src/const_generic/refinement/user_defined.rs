@@ -13,6 +13,14 @@ pub struct UserDefinedRefinement<'a, const D: usize, const DIM_OUT: usize>
     pub fun_eval: &'a UserRefinementFunction<D, DIM_OUT>,
 }
 
+impl<'a, const D: usize, const DIM_OUT: usize> UserDefinedRefinement<'a, D, DIM_OUT>
+{
+    pub fn new(fun_eval: &'a UserRefinementFunction<D, DIM_OUT>) -> Self
+    {
+        Self { fun_eval }
+    }
+}
+
 impl<const D: usize, const DIM_OUT: usize> RefinementFunctor<D, DIM_OUT> for UserDefinedRefinement<'_, D, DIM_OUT>
 {
     fn eval(&self, points: PointIterator<D>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]]) -> Vec<f64> {

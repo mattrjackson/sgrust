@@ -1,43 +1,46 @@
 use crate::errors::SGError;
 use crate::utilities::float::Float;
+use crate::basis::linear::POW2_F64;
 
 use crate::{basis::base::Basis, const_generic::{iterators::grid_iterator::GridIteratorT, storage::SparseGridData}};
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign, Iterator: GridIteratorT<D>>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D], 
+pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, T: Float +std::ops::AddAssign, Iterator: GridIteratorT<D>>(storage: &SparseGridData<D>, basis: &[BASIS; D], x: &[f64; D],
     dim: usize, value: T, iterator: &mut Iterator, alpha: &[[T; DIM_OUT]], result: &mut [T; DIM_OUT]) -> Result<(), SGError>
 {
+    // Precompute x[dim] as T once per call — eliminates one vcvtsd2ss per node visit.
+    let x_t: T = T::from(x[dim]);
     let mut level = 0;
     loop
     {
         let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
-        let work_index = storage[node_index].index[dim];        
+        let work_index = storage[node_index].index[dim];
         if level > 0
         {
-            let new_value = T::from(basis[dim].eval(level, work_index, x[dim]));
+            let new_value = basis[dim].eval_t(level, work_index, x_t);
             if dim == D - 1
             {
                 T::accumulate(result, &alpha[node_index], value * new_value);
             }
-            else 
+            else
             {
-                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result)?;    
+                eval_boundary(storage, basis, x, dim + 1, value * new_value, iterator, alpha, result)?;
             }
         }
         else
         {
             // handle boundaries if we are on level 0
             // level 0, index 0
-            // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
+            // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_left_level_zero(dim)
             {
                 let seq_l = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
-                let new_value_l = T::from(basis[dim].eval(0, 0, x[dim]));
+                let new_value_l = basis[dim].eval_t(0, 0, x_t);
                 if dim == D - 1
                 {
                     T::accumulate(result, &alpha[seq_l], value * new_value_l);
                 }
-                else 
+                else
                 {
                     eval_boundary(storage, basis, x, dim + 1, value * new_value_l, iterator, alpha, result)?;
                 }
@@ -46,12 +49,12 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             if iterator.reset_to_right_level_zero(dim)
             {
                 let seq_r = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
-                let new_value_r = T::from(basis[dim].eval(0, 1, x[dim]));
+                let new_value_r = basis[dim].eval_t(0, 1, x_t);
                 if dim == D - 1
                 {
                     T::accumulate(result, &alpha[seq_r], value * new_value_r);
                 }
-                else 
+                else
                 {
                     eval_boundary(storage, basis, x, dim + 1, value * new_value_r, iterator, alpha, result)?;
                 }
@@ -69,17 +72,18 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
         let x = x[dim];
         if level > 0
         {
-            let h = 1 << level; 
-            let x_coord = work_index as f64 / h as f64;            
-            if (x - x_coord).abs() < 1e-15
+            // Use table instead of variable shift + vcvtsi2sd.
+            let xh = x * POW2_F64[level as usize];
+            let wi = work_index as f64;
+            if (xh - wi).abs() < 1e-15
             {
                 break;
             }
-            if x > x_coord && !iterator.right_child(dim)
-            {                
+            if xh > wi && !iterator.right_child(dim)
+            {
                 break;
-            }             
-            if x <= x_coord && !iterator.left_child(dim)
+            }
+            if xh <= wi && !iterator.left_child(dim)
             {                 
                 break;
             }
