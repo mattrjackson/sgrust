@@ -1,41 +1,64 @@
-use indexmap::IndexSet;
-
 use crate::const_generic::{iterators::grid_iterator::{GridIteratorT, HashMapGridIterator}, storage::SparseGridData};
 
 use super::refinement::RefinementFunctor;
 
-/// Determines which boundary nodes are required by kept inner nodes.
-/// A boundary node is required if any kept inner node references it via left_zero or right_zero.
-fn find_required_boundary_nodes<const D: usize>(iterator: &mut HashMapGridIterator<D>, storage: &SparseGridData<D>, kept_points: &IndexSet<usize>) -> IndexSet<usize>
+/// Expands the kept-node set to include the level-zero boundary closure required by
+/// boundary hierarchization sweeps.
+///
+/// For every kept node and every dimension, both left/right level-zero projections in that
+/// dimension must exist on the active fiber. Applying this recursively yields the minimal
+/// boundary skeleton, e.g. `2^D` corners for a constant boundary grid.
+fn add_required_boundary_closure<const D: usize>(iterator: &mut HashMapGridIterator<D>, storage: &SparseGridData<D>, keep: &mut [bool])
 {
-    let mut required_boundary = IndexSet::new();
-    
-    for &seq in kept_points.iter()
+    let mut changed = true;
+    while changed
     {
-        let point = &storage.nodes()[seq];
-        iterator.set_index(*point);
-        // Only inner nodes have left_zero/right_zero dependencies
-        if !point.is_inner_point()
+        changed = false;
+        for seq in 0..storage.len()
         {
-            continue;
-        }
-        
-        for dim in 0..D
-        {
-            if iterator.reset_to_left_level_zero(dim)
+            if !keep[seq]
             {
-                required_boundary.insert(iterator.index().unwrap());    
+                continue;
             }
-            if iterator.reset_to_right_level_zero(dim)
+            let point = storage.nodes()[seq];
+            for dim in 0..D
             {
-                required_boundary.insert(iterator.index().unwrap());
+                iterator.set_index(point);
+                if iterator.reset_to_left_level_zero(dim)
+                {
+                    let boundary_seq = iterator.index().unwrap();
+                    if !keep[boundary_seq]
+                    {
+                        keep[boundary_seq] = true;
+                        changed = true;
+                    }
+                }
+                iterator.set_index(point);
+                if iterator.reset_to_right_level_zero(dim)
+                {
+                    let boundary_seq = iterator.index().unwrap();
+                    if !keep[boundary_seq]
+                    {
+                        keep[boundary_seq] = true;
+                        changed = true;
+                    }
+                }
             }
-            // reset back to original point for next dimension
-            iterator.set_index(*point);
         }
     }
-    
-    required_boundary
+}
+
+fn keep_mask_to_indices(keep: &[bool]) -> Vec<usize>
+{
+    let mut kept_points = Vec::with_capacity(keep.iter().filter(|&&keep| keep).count());
+    for (seq, &is_kept) in keep.iter().enumerate()
+    {
+        if is_kept
+        {
+            kept_points.push(seq);
+        }
+    }
+    kept_points
 }
 
 /// Coarsen the grid by removing leaf nodes with low error estimates.
@@ -49,11 +72,11 @@ fn find_required_boundary_nodes<const D: usize>(iterator: &mut HashMapGridIterat
 /// * `remove_boundary` - If true, also remove boundary nodes that are no longer needed
 ///
 /// # Returns
-/// IndexSet containing the indices of points that were kept
-pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], threshold: f64, remove_boundary: bool) -> IndexSet<usize>
+/// Vec containing the indices of points that were kept, in original storage order.
+pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut SparseGridData<D>, functor: &dyn RefinementFunctor<D, DIM_OUT>, alpha: &[[f64; DIM_OUT]], values: &[[f64; DIM_OUT]], threshold: f64, remove_boundary: bool) -> Vec<usize>
 {
     let mut iterator = HashMapGridIterator::new(storage);
-    let mut kept_points = IndexSet::default();
+    let mut keep = vec![false; storage.len()];
     iterator.reset_to_level_zero();
     let zero_index = iterator.index().unwrap();
     let values = functor.eval(storage.points(), alpha, values);
@@ -67,23 +90,20 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut Spars
             {
                 if *r >= threshold
                 {
-                    kept_points.insert(seq);
+                    keep[seq] = true;
                 }
             }
             else
             {
                 // Keep non-leaf inner nodes and zero index
-                kept_points.insert(seq);
+                keep[seq] = true;
             }
         }
     }
     
     if remove_boundary
     {
-        // Find which boundary nodes are required by kept inner nodes
-        let required_boundary = find_required_boundary_nodes(&mut iterator, storage, &kept_points);
-        
-        // Add boundary nodes based on various criteria
+        // Keep structurally significant boundary nodes before adding the required closure.
         for (seq, (point, r)) in storage.nodes().iter().zip(values.iter()).enumerate()
         {
             if !point.is_inner_point()
@@ -91,26 +111,22 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut Spars
                 // Always keep zero index
                 if seq == zero_index
                 {
-                    kept_points.insert(seq);
-                }
-                // Keep if required by a kept inner node
-                else if required_boundary.contains(&seq)
-                {
-                    kept_points.insert(seq);
+                    keep[seq] = true;
                 }
                 // Keep if not a leaf (has children that are kept)
                 else if !point.is_leaf()
                 {
-                    kept_points.insert(seq);
+                    keep[seq] = true;
                 }
                 // Keep boundary leaf nodes with significant surplus
                 else if *r >= threshold
                 {
-                    kept_points.insert(seq);
+                    keep[seq] = true;
                 }
                 // Otherwise, this boundary node can be removed
             }
         }
+        add_required_boundary_closure(&mut iterator, storage, &mut keep);
     }
     else
     {
@@ -119,11 +135,11 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut Spars
         {
             if !point.is_inner_point()
             {
-                kept_points.insert(seq);
+                keep[seq] = true;
             }
         }
     }
-    
+    let kept_points = keep_mask_to_indices(&keep);
     storage.remove(&kept_points);
     kept_points
 }

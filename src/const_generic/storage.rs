@@ -393,10 +393,10 @@ impl<const D: usize> SparseGridData<D>
         self.map.get(&hasher.finish()).map(|v|*v as usize)
     }
 
-    pub fn remove(&mut self, points_to_keep: &indexmap::IndexSet<usize>)
+    pub fn remove(&mut self, points_to_keep: &[usize])
     {
         let mut new_list = Vec::with_capacity(points_to_keep.len());
-        for &i in points_to_keep.iter()
+        for &i in points_to_keep
         {            
             new_list.push(self.nodes[i]);
         }

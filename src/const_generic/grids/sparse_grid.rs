@@ -254,15 +254,18 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             Ok(())
         }
     }
-    pub fn coarsen<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, update_iterator_data: bool, threshold: f64) -> usize
+    pub fn coarsen<OP: HierarchisationOperation<D, DIM_OUT>, F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, op: &OP, update_iterator_data: bool, threshold: f64, remove_boundary: bool) -> Result<usize, SGError>
     {
         let mut total_num_removed = 0;
         let mut last_num_removed: usize;
         loop
         {            
-            // Remove boundary nodes during standalone coarsen calls
-            last_num_removed =  self.coarsen_iteration(functor, threshold, true);                
+            last_num_removed = self.coarsen_iteration(functor, threshold, remove_boundary);
             total_num_removed += last_num_removed;
+            if last_num_removed > 0
+            {
+                self.hierarchize(op)?;
+            }
             if last_num_removed == 0
             {
                 break;
@@ -273,14 +276,14 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             self.storage.generate_map();
             self.storage.generate_adjacency_data();
         }        
-        total_num_removed
+        Ok(total_num_removed)
         
     }
 
     fn coarsen_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64, remove_boundary: bool) -> usize
     {
         let mut total_num_removed = 0;
-  
+
         let r = algorithms::coarsening::coarsen(&mut self.storage, functor, &self.alpha, &self.values, threshold, remove_boundary);
         if r.len() != self.alpha.len()
         {
@@ -289,9 +292,9 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
             for i in r
             {
                 new_alpha.push(self.alpha[i]);
-                new_values.push(self.values[i]);                
+                new_values.push(self.values[i]);
             }
-            total_num_removed = self.alpha.len() - new_alpha.len(); 
+            total_num_removed = self.alpha.len() - new_alpha.len();
             self.alpha = new_alpha;
             self.values = new_values;
         }
@@ -304,7 +307,20 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         if options.refinement_mode == RefinementMode::Anisotropic
         {                 
             // Don't remove boundary nodes during iterative refine/coarsen - they may be needed by future refinements
-            self.coarsen_iteration(functor, options.threshold, false);
+            let removed = self.coarsen_iteration(functor, options.threshold, false);
+            if removed > 0
+            {
+                if self.storage.has_boundary()
+                {
+                    let op = crate::const_generic::algorithms::hierarchisation::LinearBoundaryHierarchisationOperation;
+                    self.hierarchize(&op).expect("Could not hierarchize grid after anisotropic coarsening.");
+                }
+                else
+                {
+                    let op = crate::const_generic::algorithms::hierarchisation::LinearHierarchisationOperation;
+                    self.hierarchize(&op).expect("Could not hierarchize grid after anisotropic coarsening.");
+                }
+            }
         }
         let ref_op = BaseRefinement(self.storage.has_boundary());
         let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
@@ -358,7 +374,11 @@ impl<const D: usize, const DIM_OUT: usize> SparseGridBase<D, DIM_OUT>
         {
             if iteration > 0 && options.refinement_mode == RefinementMode::Anisotropic
             {                 
-                self.coarsen_iteration(functor, options.threshold, true);                
+                let removed = self.coarsen_iteration(functor, options.threshold, true);
+                if removed > 0
+                {
+                    self.hierarchize(op).expect("Could not hierarchize grid after anisotropic coarsening.");
+                }
             }
             let indices = ref_op.refine(&mut self.storage, &self.alpha, &self.values, functor, options.clone());
             if indices.is_empty()

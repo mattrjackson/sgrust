@@ -304,7 +304,16 @@ impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
     /// Coarsen grid based on functor `F`
     pub fn coarsen<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, threshold: f64) -> usize
     {
-        self.0.coarsen(functor, true, threshold)
+        if !self.0.has_boundary()
+        {
+            let op = LinearHierarchisationOperation;
+            self.0.coarsen(functor, &op, true, threshold, true).expect("Failed to hierarchize after coarsening")
+        }
+        else
+        {
+            let op = LinearBoundaryHierarchisationOperation;
+            self.0.coarsen(functor, &op, true, threshold, true).expect("Failed to hierarchize after coarsening")
+        }
     }
     
     pub fn refine_iteration<F: RefinementFunctor<D, DIM_OUT>>(&mut self, functor: &F, options: RefinementOptions) -> Vec<[f64; D]>
@@ -903,4 +912,123 @@ fn check_boundary_refine_hierarchize_without_coarsen()
     let approx_x1 = grid.interpolate(x1).unwrap()[0];
     assert!((approx_x0 - exact_x0).abs() < 1e-6, "boundary basis at x=0 should be accurate");
     assert!((approx_x1 - exact_x1).abs() < 1e-6, "boundary basis at x=1 should be accurate");
+}
+
+#[test]
+fn check_coarsen_noop_preserves_node_and_value_order()
+{
+    use crate::const_generic::refinement::user_defined::UserDefinedRefinement;
+
+    let mut grid = LinearGrid::<2, 2>::new();
+    grid.full_grid_with_boundaries(5).expect("Could not create grid.");
+
+    let values: Vec<[f64; 2]> = grid.storage().nodes().iter()
+        .map(|node| {
+            [
+                node.level[0] as f64 + 10.0 * node.level[1] as f64 + 100.0 * node.index[0] as f64,
+                node.index[1] as f64 + 0.1 * node.level[0] as f64 + 0.01 * node.level[1] as f64,
+            ]
+        })
+        .collect();
+    grid.set_values(values).unwrap();
+
+    let before_nodes = grid.storage().nodes().clone();
+    let before_values = grid.values().clone();
+    let before_alpha = grid.alpha().to_vec();
+
+    let noop_functor = UserDefinedRefinement {
+        fun_eval: &|_, _, _| 1.0,
+    };
+
+    let removed = grid.coarsen(&noop_functor, 0.5);
+    assert_eq!(removed, 0, "coarsen should keep every node for this test");
+    assert_eq!(&before_nodes, grid.storage().nodes(), "no-op coarsen reordered nodes");
+    assert_eq!(&before_values, grid.values(), "no-op coarsen reordered values");
+    assert_eq!(&before_alpha, grid.alpha(), "no-op coarsen reordered alpha");
+}
+
+#[test]
+fn check_coarsen_rehierarchizes_retained_nodes()
+{
+    use crate::const_generic::refinement::surplus::SurplusRefinement;
+
+    let mut grid = LinearGrid::<2, 1>::new();
+    grid.full_grid_with_boundaries(5).expect("Could not create grid.");
+    grid.update_values(&|point| [point[0] * point[0] + point[1] * point[1]]);
+
+    let removed = grid.coarsen(&SurplusRefinement, 1e-5);
+    assert!(removed > 0, "test requires an actual coarsen step");
+
+    let alpha_after_coarsen = grid.alpha().to_vec();
+    grid.hierarchize().expect("rehierarchize after coarsen failed");
+    for (alpha_before, alpha_after) in alpha_after_coarsen.iter().zip(grid.alpha().iter())
+    {
+        assert!(
+            (alpha_before[0] - alpha_after[0]).abs() < 1e-12,
+            "coarsen left stale alpha: before={}, after={}",
+            alpha_before[0],
+            alpha_after[0]
+        );
+    }
+}
+
+#[test]
+fn check_boundary_coarsen_constant_grid_reduces_to_corners()
+{
+    use crate::const_generic::refinement::surplus::SurplusRefinement;
+
+    let mut grid = LinearGrid::<2, 1>::new();
+    grid.full_grid_with_boundaries(4).expect("Could not create grid.");
+    grid.update_values(&|_| [1.0]);
+
+    let removed = grid.coarsen(&SurplusRefinement, 1e-12);
+    assert!(removed > 0, "test requires a mutating coarsen step");
+    assert_eq!(grid.len(), 4, "constant 2D boundary grid should reduce to the four corners");
+
+    let mut nodes = grid.storage().nodes().clone();
+    nodes.sort();
+    let expected = vec![
+        crate::const_generic::storage::GridPoint::new([0, 0], [0, 0], true),
+        crate::const_generic::storage::GridPoint::new([0, 0], [0, 1], true),
+        crate::const_generic::storage::GridPoint::new([0, 0], [1, 0], true),
+        crate::const_generic::storage::GridPoint::new([0, 0], [1, 1], true),
+    ];
+
+    for (actual, expected) in nodes.iter().zip(expected.iter())
+    {
+        assert_eq!(actual.level, expected.level);
+        assert_eq!(actual.index, expected.index);
+    }
+    assert!((grid.interpolate([0.37, 0.61]).unwrap()[0] - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn check_anisotropic_refine_iteration_rehierarchizes_after_coarsen()
+{
+    use crate::const_generic::algorithms::refinement::RefinementMode;
+    use crate::const_generic::refinement::surplus::SurplusRefinement;
+
+    let mut grid = LinearGrid::<2, 1>::new();
+    grid.full_grid_with_boundaries(5).expect("Could not create grid.");
+    grid.update_values(&|point| [point[0] * point[0] + point[1] * point[1]]);
+
+    let mut options = RefinementOptions::new(1e-5);
+    options.refinement_mode = RefinementMode::Anisotropic;
+
+    let alpha_before = grid.alpha().to_vec();
+    let _ = grid.refine_iteration(&SurplusRefinement, options);
+    let alpha_after = grid.alpha().to_vec();
+
+    grid.hierarchize().expect("rehierarchize after anisotropic refine_iteration failed");
+    for (before_rehierarchize, after_rehierarchize) in alpha_after.iter().zip(grid.alpha().iter())
+    {
+        assert!(
+            (before_rehierarchize[0] - after_rehierarchize[0]).abs() < 1e-12,
+            "anisotropic refine_iteration left stale alpha: before={}, after={}",
+            before_rehierarchize[0],
+            after_rehierarchize[0]
+        );
+    }
+
+    assert_ne!(alpha_before, alpha_after, "test should exercise anisotropic coarsen/refine path");
 }

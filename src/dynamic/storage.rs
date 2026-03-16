@@ -635,7 +635,7 @@ impl SparseGridData
         self.map.get(&index.into()).map(|&v| v as usize)
     }
 
-    pub fn remove(&mut self, points_to_keep: &indexmap::IndexSet<usize>)
+    pub fn remove(&mut self, points_to_keep: &[usize])
     {
         let mut indices = Vec::with_capacity(points_to_keep.len()*self.num_inputs);
         let mut levels = Vec::with_capacity(points_to_keep.len()*self.num_inputs);

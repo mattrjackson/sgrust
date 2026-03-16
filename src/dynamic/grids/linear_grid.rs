@@ -311,7 +311,16 @@ impl LinearGrid
     /// Coarsen grid based on functor `F`
     pub fn coarsen<F: RefinementFunctor>(&mut self, functor: &F, threshold: f64) -> usize
     {
-        self.0.coarsen(functor, true, threshold)
+        if !self.0.has_boundary()
+        {
+            let op = LinearHierarchisationOperation;
+            self.0.coarsen(functor, &op, true, threshold, true).expect("Failed to hierarchize after coarsening")
+        }
+        else
+        {
+            let op = LinearBoundaryHierarchisationOperation;
+            self.0.coarsen(functor, &op, true, threshold, true).expect("Failed to hierarchize after coarsening")
+        }
     }
     
     pub fn refine_iteration<F: RefinementFunctor>(&mut self, functor: &F, options: RefinementOptions) -> Vec<f64>
@@ -827,4 +836,37 @@ fn compare_3d_sin_refinement_isotropic_vs_anisotropic()
         let _r = grid_aniso.interpolate(&[0.3,0.3,0.3], &mut r).unwrap();        
     }
     println!("1e5 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
+}
+
+#[test]
+fn check_boundary_coarsen_constant_grid_reduces_to_corners()
+{
+    use crate::dynamic::refinement::surplus::SurplusRefinement;
+
+    let mut grid = LinearGrid::new(2, 1);
+    grid.full_grid_with_boundaries(4).expect("Could not create grid.");
+    grid.set_values(vec![1.0; grid.len()]).expect("Could not set constant values.");
+
+    let removed = grid.coarsen(&SurplusRefinement(2, 1), 1e-12);
+    assert!(removed > 0, "test requires a mutating coarsen step");
+    assert_eq!(grid.len(), 4, "constant 2D boundary grid should reduce to the four corners");
+
+    let mut nodes: Vec<_> = (0..grid.len()).map(|i| grid.storage().point(i)).collect();
+    nodes.sort();
+    let expected = vec![
+        crate::dynamic::storage::GridPoint::new(&[0, 0], &[0, 0], true),
+        crate::dynamic::storage::GridPoint::new(&[0, 0], &[0, 1], true),
+        crate::dynamic::storage::GridPoint::new(&[0, 0], &[1, 0], true),
+        crate::dynamic::storage::GridPoint::new(&[0, 0], &[1, 1], true),
+    ];
+
+    for (actual, expected) in nodes.iter().zip(expected.iter())
+    {
+        assert_eq!(actual.level, expected.level);
+        assert_eq!(actual.index, expected.index);
+    }
+
+    let mut value = [0.0];
+    grid.interpolate(&[0.37, 0.61], &mut value).unwrap();
+    assert!((value[0] - 1.0).abs() < 1e-12);
 }

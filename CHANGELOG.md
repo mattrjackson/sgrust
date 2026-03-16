@@ -9,6 +9,19 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.5] — 2026-03-16
+
+### Breaking
+### Security
+### Added
+### Changed
+### Deprecated
+### Removed
+Removed IndexMap dependency
+### Fixed
+Fixed bugs in coarsening function that led to inaccurate surplus evaluation, and inadvertent reordering of values.
+
+
 # [0.8.4] — 2026-03-07
 
 ### Breaking
