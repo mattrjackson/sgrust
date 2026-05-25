@@ -7,12 +7,15 @@ use serde_with::serde_as;
 use crate::dynamic::algorithms::basis_evaluation::BasisEvaluation;
 use crate::dynamic::algorithms::refinement::{BaseRefinement, RefinementFunctor, RefinementOptions};
 use crate::basis::linear::LinearBasis;
+use crate::basis::linear::POW2_F64;
 use crate::errors::SGError;
 use crate::dynamic::algorithms::hierarchisation::HierarchisationOperation;
 use crate::dynamic::iterators::grid_iterator_cache::AdjacencyGridIterator;
 use crate::dynamic::storage::{BoundingBox, GridPoint, PointIterator, SparseGridData};
 use crate::dynamic::generators::*;
 use serde::{Serialize,Deserialize};
+#[cfg(feature = "rkyv")]
+use rkyv::with::Skip;
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
@@ -20,7 +23,19 @@ pub struct SparseGridBase
 {
     pub(crate) storage: SparseGridData,
     pub(crate) alpha: Vec<f64>,
-    pub(crate) values: Vec<f64>,    
+    pub(crate) values: Vec<f64>,
+    #[serde(skip_serializing, skip_deserializing)]
+    #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
+    interpolation_nodes_1d: Vec<f64>,
+    #[serde(skip_serializing, skip_deserializing)]
+    #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
+    interpolation_order_1d: Vec<usize>,
+    #[serde(skip_serializing, skip_deserializing)]
+    #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
+    interpolation_uniform_1d: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
+    interpolation_step_1d: f64,
 }
 
 
@@ -28,7 +43,15 @@ impl SparseGridBase
 {
     pub fn new(num_inputs: usize, num_outputs: usize) -> Self
     {
-        SparseGridBase { storage: SparseGridData::new(num_inputs, num_outputs), alpha: Vec::new(), values: Vec::new() }
+        SparseGridBase {
+            storage: SparseGridData::new(num_inputs, num_outputs),
+            alpha: Vec::new(),
+            values: Vec::new(),
+            interpolation_nodes_1d: Vec::new(),
+            interpolation_order_1d: Vec::new(),
+            interpolation_uniform_1d: false,
+            interpolation_step_1d: 0.0,
+        }
     }
 
     pub fn alpha(&self) -> &[f64]
@@ -150,12 +173,78 @@ impl SparseGridBase
         {            
             *value = indices_rev[*value as usize] as u32;
         }
+        self.update_1d_interpolation_data();
+    }
+
+    pub(crate) fn update_1d_interpolation_data(&mut self)
+    {
+
+        if self.storage.num_inputs > 1
+        {
+            return;
+        }
+        self.interpolation_nodes_1d.clear();
+        self.interpolation_order_1d.clear();
+        self.interpolation_uniform_1d = false;
+        self.interpolation_step_1d = 0.0;
+
+
+        let mut nodes = Vec::with_capacity(self.storage.len());
+        for seq in 0..self.storage.len()
+        {
+            let coord = self.storage.index[seq] as f64 / POW2_F64[self.storage.level[seq] as usize];
+            nodes.push((coord, seq));
+        }
+        nodes.sort_by(|lhs, rhs| lhs.0.total_cmp(&rhs.0));
+
+        self.interpolation_nodes_1d.reserve(nodes.len());
+        self.interpolation_order_1d.reserve(nodes.len());
+        for (coord, seq) in nodes
+        {
+            self.interpolation_nodes_1d.push(coord);
+            self.interpolation_order_1d.push(seq);
+        }
+        self.update_uniform_1d_metadata();
+    }
+
+    fn update_uniform_1d_metadata(&mut self)
+    {
+        let len = self.interpolation_nodes_1d.len();
+        if len == 0
+        {
+            return;
+        }
+
+        let denom = if self.storage.has_boundary()
+        {
+            if len < 2
+            {
+                return;
+            }
+            len - 1
+        }
+        else
+        {
+            len + 1
+        };
+        let step = 1.0 / denom as f64;
+        let offset = usize::from(!self.storage.has_boundary());
+        let is_uniform = self.interpolation_nodes_1d.iter().enumerate().all(|(i, &node)|
+        {
+            (node - (i + offset) as f64 * step).abs() < 1e-14
+        });
+
+        if is_uniform
+        {
+            self.interpolation_uniform_1d = true;
+            self.interpolation_step_1d = step;
+        }
     }
 
     #[inline]
     pub fn interpolate(&self, x: &[f64], result: &mut [f64] ) -> Result<(), SGError>
     {    
-        if !self.bounding_box().contains(&x)
+        if !self.bounding_box().contains(x)
         {
             Err(SGError::OutOfDomain)
         }
@@ -167,10 +256,321 @@ impl SparseGridBase
     #[inline]
     pub fn interpolate_unchecked(&self, x: &[f64], result: &mut [f64]) -> Result<(), SGError>
     {
+        if self.storage.num_inputs == 1
+        {
+            return self.interpolate_1d_unchecked(x[0], result);
+        }
         use crate::dynamic::algorithms::interpolation::InterpolationOperation;
         let iterator = &mut AdjacencyGridIterator::new(&self.storage);
         let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));      
         op.interpolate(x, &self.alpha, iterator, result)
+    }
+
+    #[inline]
+    fn interpolate_1d_unchecked(&self, x: f64, result: &mut [f64]) -> Result<(), SGError>
+    {
+        if self.storage.is_empty()
+        {
+            return Ok(());
+        }
+        let bbox = self.storage.bounding_box();
+        let x = (x - bbox.lower[0]) / (bbox.upper[0] - bbox.lower[0]);
+        if self.interpolation_order_1d.len() == self.storage.len()
+            && self.interpolation_nodes_1d.len() == self.storage.len()
+            && self.values.len() == self.storage.len() * self.storage.num_outputs
+        {
+            self.interpolate_1d_sorted_unit(x, result);
+            return Ok(());
+        }
+        if self.storage.has_boundary()
+        {
+            self.interpolate_1d_boundary_unit(x, result)
+        }
+        else
+        {
+            self.interpolate_1d_inner_unit(x, result)
+        }
+    }
+
+    fn overwrite_1d_value(&self, seq: usize, result: &mut [f64])
+    {
+        let offset = seq * self.storage.num_outputs;
+        result[..self.storage.num_outputs].copy_from_slice(&self.values[offset..offset + self.storage.num_outputs]);
+    }
+
+    fn write_1d_blend(&self, left: Option<usize>, left_weight: f64, right: Option<usize>, right_weight: f64, result: &mut [f64])
+    {
+        let left_offset = left.map(|seq| seq * self.storage.num_outputs);
+        let right_offset = right.map(|seq| seq * self.storage.num_outputs);
+        for output in 0..self.storage.num_outputs
+        {
+            let mut value = 0.0;
+            if let Some(offset) = left_offset
+            {
+                value += self.values[offset + output] * left_weight;
+            }
+            if let Some(offset) = right_offset
+            {
+                value += self.values[offset + output] * right_weight;
+            }
+            result[output] = value;
+        }
+    }
+
+    fn interpolate_1d_sorted_unit(&self, x: f64, result: &mut [f64])
+    {
+        if self.interpolation_uniform_1d
+        {
+            self.interpolate_1d_uniform_unit(x, result);
+            return;
+        }
+
+        match self.interpolation_nodes_1d.binary_search_by(|node| node.total_cmp(&x))
+        {
+            Ok(pos) => self.overwrite_1d_value(self.interpolation_order_1d[pos], result),
+            Err(pos) => {
+                let left = if pos == 0 {
+                    None
+                } else {
+                    Some((self.interpolation_nodes_1d[pos - 1], self.interpolation_order_1d[pos - 1]))
+                };
+                let right = if pos == self.interpolation_nodes_1d.len() {
+                    None
+                } else {
+                    Some((self.interpolation_nodes_1d[pos], self.interpolation_order_1d[pos]))
+                };
+
+                let (left_x, right_x) = match (left, right)
+                {
+                    (Some((left_x, _)), Some((right_x, _))) => (left_x, right_x),
+                    (None, Some((right_x, _))) if !self.storage.has_boundary() => (0.0, right_x),
+                    (Some((left_x, _)), None) if !self.storage.has_boundary() => (left_x, 1.0),
+                    (None, Some((_, right_seq))) => {
+                        self.overwrite_1d_value(right_seq, result);
+                        return;
+                    }
+                    (Some((_, left_seq)), None) => {
+                        self.overwrite_1d_value(left_seq, result);
+                        return;
+                    }
+                    (None, None) => {
+                        result[..self.storage.num_outputs].fill(0.0);
+                        return;
+                    }
+                };
+
+                let width = right_x - left_x;
+                if width <= 0.0
+                {
+                    result[..self.storage.num_outputs].fill(0.0);
+                    return;
+                }
+                let right_weight = (x - left_x) / width;
+                let left_weight = 1.0 - right_weight;
+
+                self.write_1d_blend(left.map(|(_, seq)| seq), left_weight, right.map(|(_, seq)| seq), right_weight, result);
+            }
+        }
+    }
+
+    fn interpolate_1d_uniform_unit(&self, x: f64, result: &mut [f64])
+    {
+        let len = self.interpolation_order_1d.len();
+
+        if self.storage.has_boundary()
+        {
+            if x <= 0.0
+            {
+                self.overwrite_1d_value(self.interpolation_order_1d[0], result);
+                return;
+            }
+            if x >= 1.0
+            {
+                self.overwrite_1d_value(self.interpolation_order_1d[len - 1], result);
+                return;
+            }
+        }
+        else if x <= 0.0 || x >= 1.0
+        {
+            result[..self.storage.num_outputs].fill(0.0);
+            return;
+        }
+
+        let scaled = x / self.interpolation_step_1d;
+        let left_lattice = if self.storage.has_boundary()
+        {
+            (scaled.floor() as usize).min(len - 2)
+        }
+        else
+        {
+            (scaled.floor() as usize).min(len)
+        };
+        let right_weight = scaled - left_lattice as f64;
+        let left_weight = 1.0 - right_weight;
+
+        let left = if self.storage.has_boundary()
+        {
+            Some(self.interpolation_order_1d[left_lattice])
+        }
+        else if left_lattice == 0
+        {
+            None
+        }
+        else
+        {
+            Some(self.interpolation_order_1d[left_lattice - 1])
+        };
+
+        let right = if self.storage.has_boundary()
+        {
+            Some(self.interpolation_order_1d[left_lattice + 1])
+        }
+        else if left_lattice >= len
+        {
+            None
+        }
+        else
+        {
+            Some(self.interpolation_order_1d[left_lattice])
+        };
+
+        self.write_1d_blend(left, left_weight, right, right_weight, result);
+    }
+
+    #[inline]
+    fn linear_basis_value(level: u32, index: u32, x: f64) -> f64
+    {
+        if level == 0
+        {
+            (1.0 - x) * (1 - index) as f64 + x * index as f64
+        }
+        else
+        {
+            let dist = (x * POW2_F64[level as usize] - index as f64).abs();
+            (1.0 - dist).max(0.0)
+        }
+    }
+
+    #[inline]
+    fn add_1d_contribution(&self, seq: usize, weight: f64, result: &mut [f64])
+    {
+        let offset = seq * self.storage.num_outputs;
+        for output in 0..self.storage.num_outputs
+        {
+            result[output] += self.alpha[offset + output] * weight;
+        }
+    }
+
+    #[inline]
+    fn descend_1d(&self, seq: usize, go_right: bool) -> Option<usize>
+    {
+        let adj = &self.storage.adjacency_data[seq];
+        if go_right && adj.has_right_child()
+        {
+            Some((seq as i64 + adj.down_right()) as usize)
+        }
+        else if !go_right && adj.has_left_child()
+        {
+            Some((seq as i64 + adj.down_left()) as usize)
+        }
+        else
+        {
+            None
+        }
+    }
+
+    fn interpolate_1d_inner_unit(&self, x: f64, result: &mut [f64]) -> Result<(), SGError>
+    {
+        const MAX_LEVEL: u32 = 31;
+        let bits = std::mem::size_of::<u32>() * 8;
+        let val = (x * (1 << (bits - 2)) as f64).floor() * 2.0;
+        let source = if x == 1.0 { (val - 1.0) as u32 } else { (val + 1.0) as u32 };
+        let mut seq = 0;
+        let mut level = 1;
+        loop
+        {
+            let index = self.storage.index[seq];
+            self.add_1d_contribution(seq, Self::linear_basis_value(level, index, x), result);
+            if self.storage.flags[seq].is_leaf()
+            {
+                break;
+            }
+            let go_right = (source & (1 << (MAX_LEVEL - level))) > 0;
+            level += 1;
+            if let Some(next) = self.descend_1d(seq, go_right)
+            {
+                seq = next;
+            }
+            else
+            {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn interpolate_1d_boundary_unit(&self, x: f64, result: &mut [f64]) -> Result<(), SGError>
+    {
+        let mut seq = self.storage.adjacency_data.zero_index;
+        if seq == usize::MAX
+        {
+            return Ok(());
+        }
+        let left = self.storage.adjacency_data.left_zero[seq];
+        if left != u32::MAX
+        {
+            seq = left as usize;
+            self.add_1d_contribution(seq, Self::linear_basis_value(0, 0, x), result);
+        }
+        let right = self.storage.adjacency_data.right_zero[seq];
+        if right != u32::MAX
+        {
+            seq = right as usize;
+            self.add_1d_contribution(seq, Self::linear_basis_value(0, 1, x), result);
+        }
+        let mut level = 0;
+        loop
+        {
+            if self.storage.flags[seq].is_leaf()
+            {
+                break;
+            }
+            if level > 0
+            {
+                let index = self.storage.index[seq];
+                let xh = x * POW2_F64[level as usize];
+                let node = index as f64;
+                if (xh - node).abs() < 1e-15
+                {
+                    break;
+                }
+                if let Some(next) = self.descend_1d(seq, xh > node)
+                {
+                    seq = next;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            else
+            {
+                if x.abs() < 1e-15 || (x - 1.0).abs() < 1e-15
+                {
+                    break;
+                }
+                let level_one = self.storage.adjacency_data[seq].level_one();
+                if level_one == u32::MAX
+                {
+                    break;
+                }
+                seq = level_one as usize;
+            }
+            level += 1;
+            let index = self.storage.index[seq];
+            self.add_1d_contribution(seq, Self::linear_basis_value(level, index, x), result);
+        }
+        Ok(())
     }
 
     /// Create a reusable interpolation state for zero-allocation repeated interpolation.
@@ -187,6 +587,14 @@ impl SparseGridBase
     #[inline]
     pub fn interpolate_with_state(&self, x: &[f64], state: &mut crate::dynamic::algorithms::interpolation_state::InterpolationState<'_>, result: &mut [f64]) -> Result<(), SGError>
     {
+        if self.storage.num_inputs == 1
+        {
+            if !self.bounding_box().contains(x)
+            {
+                return Err(SGError::OutOfDomain);
+            }
+            return self.interpolate_1d_unchecked(x[0], result);
+        }
         use crate::dynamic::algorithms::interpolation::InterpolationOperation;        
         let op = InterpolationOperation(self.storage.has_boundary(), BasisEvaluation(&self.storage, self.storage.num_inputs, self.storage.num_outputs));      
         op.interpolate(x, &self.alpha, &mut state.iterator, result)
@@ -274,6 +682,7 @@ impl SparseGridBase
         else
         {
             self.values = values;
+            self.update_1d_interpolation_data();
             Ok(())
         }
     }
@@ -298,7 +707,8 @@ impl SparseGridBase
         {
             self.storage.generate_map();
             self.storage.generate_adjacency_data();
-        }        
+        }
+        self.update_1d_interpolation_data();
         Ok(total_num_removed)
         
     }
@@ -353,7 +763,8 @@ impl SparseGridBase
             let mut point = self.storage.unit_coordinate(i);
             self.storage.bounding_box().to_real_coordinate_in_place(&mut point);            
             points.extend(point);
-        }           
+        }
+        self.update_1d_interpolation_data();
         points
     }
     pub fn refine<F: RefinementFunctor, OP: HierarchisationOperation, EF: Fn(&[f64])->Vec<f64>>(&mut self, functor: &F, eval_fun: &EF, op: &OP, options: RefinementOptions, max_iterations: usize) -> Result<(), SGError>

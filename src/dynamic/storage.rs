@@ -1,4 +1,4 @@
-use std::{hash::{Hash, Hasher}, u32};
+use std::hash::{Hash, Hasher};
 use nohash_hasher::BuildNoHashHasher;
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
@@ -102,7 +102,7 @@ impl GridPoint
 {
     pub fn new (level: &[u8], index: &[u32], is_leaf: bool) -> Self
     {
-        let flags= GridPointFlags::new(&level, is_leaf);
+        let flags= GridPointFlags::new(level, is_leaf);
         Self { level: level.to_vec(), index: index.to_vec(), flags }
     }   
     pub fn is_leaf(&self) -> bool
@@ -269,7 +269,7 @@ impl PartialOrd for GridPointRef<'_>
 
 impl Ord for GridPointRef<'_>{
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.index.cmp(&other.index).then(self.level.cmp(&other.level))
+        self.index.cmp(other.index).then(self.level.cmp(other.level))
     }
 }
 
@@ -386,6 +386,7 @@ impl BoundingBox
     #[inline]
     pub fn to_real_coordinate_in_place(&self, point: &mut [f64])
     {        
+        #[allow(clippy::needless_range_loop)]
         for i in 0..point.len()
         {
             point[i] = self.lower[i] + (self.upper[i] - self.lower[i]) * point[i];
@@ -580,8 +581,8 @@ impl SparseGridData
         point.flags.update_is_inner(&point.level);
         let key: u64 = (&point).into();
         self.map.insert(key, index as u32);
-        self.index.chunks_exact_mut(self.num_inputs).nth(index).ok_or_else(||SGError::InvalidIndex)?.copy_from_slice(&point.index);
-        self.level.chunks_exact_mut(self.num_inputs).nth(index).ok_or_else(||SGError::InvalidIndex)?.copy_from_slice(&point.level);   
+        self.index.chunks_exact_mut(self.num_inputs).nth(index).ok_or(SGError::InvalidIndex)?.copy_from_slice(&point.index);
+        self.level.chunks_exact_mut(self.num_inputs).nth(index).ok_or(SGError::InvalidIndex)?.copy_from_slice(&point.level);   
         self.flags[index] = point.flags;
         Ok(())
     }
@@ -589,7 +590,7 @@ impl SparseGridData
     /// Return the nodes in the grid...
     /// 
     pub fn nodes(&self) -> NodeIterator<'_> {
-        NodeIterator::new(&self)
+        NodeIterator::new(self)
     }
 
     ///
@@ -597,7 +598,7 @@ impl SparseGridData
     /// 
     pub fn points(&self) -> PointIterator<'_>
     {
-        PointIterator::new(&self)
+        PointIterator::new(self)
     }
 
     pub fn generate_map(&mut self)
@@ -715,7 +716,7 @@ impl SparseGridData
 
     fn generate_adjacency_data_for_index(&mut self, array:&mut [NodeAdjacency], left_zero: &mut [u32], right_zero: &mut [u32], seq: usize, dim: usize)
     {
-        let mut iterator = DynamicHashMapGridIterator::new(&self);
+        let mut iterator = DynamicHashMapGridIterator::new(self);
         let offset =  dim * self.len();
         let active_index = offset + seq;
         let node_index= self.point(seq); 

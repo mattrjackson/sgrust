@@ -13,7 +13,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
     let mut level = 0;
     loop
     {
-        let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+        let node_index = iterator.index().ok_or(SGError::InvalidIteratorSequence)?;
         let work_index = storage[node_index].index[dim];
         if level > 0
         {
@@ -34,7 +34,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_left_level_zero(dim)
             {
-                let seq_l = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let seq_l = iterator.index().ok_or(SGError::InvalidIteratorSequence)?;
                 let new_value_l = basis[dim].eval_t(0, 0, x_t);
                 if dim == D - 1
                 {
@@ -48,7 +48,7 @@ pub(crate) fn eval_boundary<const D: usize, const DIM_OUT: usize, BASIS: Basis, 
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_right_level_zero(dim)
             {
-                let seq_r = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let seq_r = iterator.index().ok_or(SGError::InvalidIteratorSequence)?;
                 let new_value_r = basis[dim].eval_t(0, 1, x_t);
                 if dim == D - 1
                 {

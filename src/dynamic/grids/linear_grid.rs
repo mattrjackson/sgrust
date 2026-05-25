@@ -18,12 +18,7 @@ impl Generator for LinearGridGenerator
     fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>{
         regular(storage, levels, T)
     }
-
-    #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>) -> Result<(), SGError> {
-        cliques(storage, levels, clique_size, T)
-    }
-
+    
     fn full(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
        full(storage, level)
     }
@@ -50,6 +45,7 @@ where
         let base = SparseGridBase::deserialize(deserializer)?;
         let mut grid = Self(base);
         grid.0.storage.generate_adjacency_data();
+        grid.0.update_1d_interpolation_data();
         Ok(grid)
     }
 }
@@ -65,6 +61,7 @@ where
         let base: SparseGridBase = rkyv::Deserialize::deserialize(&self.0, deserializer)?;
         let mut grid = LinearGrid(base);
         grid.0.storage.generate_adjacency_data();
+        grid.0.update_1d_interpolation_data();
         Ok(grid)
     }
 }
@@ -169,12 +166,14 @@ impl LinearGrid
     pub fn read<Reader: std::io::Read>(reader: Reader, format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
         let mut grid = Self(SparseGridBase::read(reader, format)?);
         grid.0.storage.generate_adjacency_data();
+        grid.0.update_1d_interpolation_data();
         Ok(grid)
     }
 
     pub fn read_buffer(buffer: &[u8], format: crate::serialization::SerializationFormat) -> Result<Self, SGError> where Self: Sized {
         let mut grid = Self(SparseGridBase::read_buffer(buffer, format)?);
         grid.0.storage.generate_adjacency_data();
+        grid.0.update_1d_interpolation_data();
         Ok(grid)
     }
 
@@ -360,7 +359,7 @@ fn check_make_grid_1d()
     let start = std::time::Instant::now();
     for _i in 0..1e6 as usize
     {
-        let _r = grid.interpolate(&[0.8], &mut value).unwrap();
+        grid.interpolate(&[0.8], &mut value).unwrap();
     }
     
     println!("1e6 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
@@ -596,7 +595,7 @@ fn check_grid_refinement_iteration()
     for _ in 0..20
     {
         let values: Vec<f64> = grid.refine_iteration(&functor, thresholds.clone()).chunks_exact_mut(2).
-            map(|point| vec![point[0]*point[0] + point[1]]).flatten().collect();
+            flat_map(|point| vec![point[0]*point[0] + point[1]]).collect();
         grid.update_refined_values(&values, false).expect("Couldn't refine grid");
     }
     grid.sort();
@@ -632,7 +631,7 @@ fn check_grid_refinement_iteration_dimension_adaptive()
     let functor = crate::dynamic::refinement::surplus::SurplusRefinement(2, 1);
     for _ in 0..20
     {
-        let values: Vec<_> = grid.refine_iteration(&functor, options.clone()).chunks_exact_mut(2).map(|point| [point[0]*point[0] + point[1]]).flatten().collect();
+        let values: Vec<_> = grid.refine_iteration(&functor, options.clone()).chunks_exact_mut(2).flat_map(|point| [point[0]*point[0] + point[1]]).collect();
         grid.update_refined_values(&values, false).expect("Couldn't refine grid");
     }
     grid.sort();
@@ -833,7 +832,7 @@ fn compare_3d_sin_refinement_isotropic_vs_anisotropic()
     let mut r = vec![0.0];
     for _ in 0..1e5 as usize
     {
-        let _r = grid_aniso.interpolate(&[0.3,0.3,0.3], &mut r).unwrap();        
+        grid_aniso.interpolate(&[0.3,0.3,0.3], &mut r).unwrap();        
     }
     println!("1e5 iterations in {} msec", std::time::Instant::now().duration_since(start).as_millis());
 }
@@ -853,7 +852,7 @@ fn check_boundary_coarsen_constant_grid_reduces_to_corners()
 
     let mut nodes: Vec<_> = (0..grid.len()).map(|i| grid.storage().point(i)).collect();
     nodes.sort();
-    let expected = vec![
+    let expected = [
         crate::dynamic::storage::GridPoint::new(&[0, 0], &[0, 0], true),
         crate::dynamic::storage::GridPoint::new(&[0, 0], &[0, 1], true),
         crate::dynamic::storage::GridPoint::new(&[0, 0], &[1, 0], true),

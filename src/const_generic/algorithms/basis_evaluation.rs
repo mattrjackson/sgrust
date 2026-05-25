@@ -25,7 +25,7 @@ impl <const D: usize, const DIM_OUT: usize, BASIS: Basis> BasisEvaluation<'_, D,
             let val = T::from(self.basis(current_dim).eval(level, index, point[current_dim])) * value;            
             if current_dim == D - 1
             {
-                let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let node_index = iterator.index().ok_or(SGError::InvalidIteratorSequence)?;
                 #[allow(clippy::needless_range_loop)]
                 for d in 0..DIM_OUT
                 {

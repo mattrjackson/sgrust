@@ -1,6 +1,6 @@
 [package]
 name = "sgrust"
-version = "0.8.5"
+version = "0.8.6"
 edition = "2024"
 license = "MIT"
 keywords = ["sparsegrid", "interpolation"]
@@ -10,7 +10,6 @@ repository = "https://github.com/mattrjackson/sgrust"
 [dependencies]
 bitcode = { version = "0.6", features = ["serde"] }
 bitfield-struct = "0.11.0"
-kdtree = "0.7.0"
 lz4_flex = "0.11.5"
 ndarray = "0.17.1"
 rayon = {version = "1.10.0", optional = true }

@@ -114,18 +114,11 @@ pub(crate) fn coarsen(storage: &mut SparseGridData, functor: &dyn RefinementFunc
             {
                 let is_leaf = storage.is_leaf(seq);
                 
-                // Always keep zero index
-                if seq == zero_index
-                {
-                    keep[seq] = true;
-                }
-                // Keep if not a leaf (has children that are kept)
-                else if !is_leaf
-                {
-                    keep[seq] = true;
-                }
-                // Keep boundary leaf nodes with significant surplus
-                else if *r >= threshold
+                // Always keep if:
+                // 1. Zero index
+                // 2. If not a leaf (has children that are kept)
+                // 3. Leaf nodes with significant surplus
+                if seq == zero_index || !is_leaf || *r >= threshold
                 {
                     keep[seq] = true;
                 }
@@ -137,6 +130,7 @@ pub(crate) fn coarsen(storage: &mut SparseGridData, functor: &dyn RefinementFunc
     else
     {
         // Keep all boundary nodes
+        #[allow(clippy::needless_range_loop)]
         for seq in 0..storage.len()
         {
             if !storage.is_inner_point(seq)

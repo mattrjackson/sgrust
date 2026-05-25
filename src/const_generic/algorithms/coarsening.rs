@@ -108,18 +108,8 @@ pub(crate) fn coarsen<const D: usize, const DIM_OUT: usize>( storage: &mut Spars
         {
             if !point.is_inner_point()
             {
-                // Always keep zero index
-                if seq == zero_index
-                {
-                    keep[seq] = true;
-                }
-                // Keep if not a leaf (has children that are kept)
-                else if !point.is_leaf()
-                {
-                    keep[seq] = true;
-                }
-                // Keep boundary leaf nodes with significant surplus
-                else if *r >= threshold
+                // Always keep zero index, if not a leaf (has children that are kept), or boundary leaf nodes with significant surplus
+                if seq == zero_index || !point.is_leaf() || *r >= threshold
                 {
                     keep[seq] = true;
                 }

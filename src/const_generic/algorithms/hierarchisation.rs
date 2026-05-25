@@ -54,10 +54,10 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
     fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError> {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
-        let seq_left = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
+        let seq_left = iterator.seq().ok_or(SGError::InvalidIteratorSequence)?;
         let left_boundary = values[seq_left];
         iterator.reset_to_right_level_zero(dimension);
-        let seq_right = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;       
+        let seq_right = iterator.seq().ok_or(SGError::InvalidIteratorSequence)?;       
         let right_boundary = values[seq_right];
         if !iterator.is_leaf()
         {
@@ -121,10 +121,10 @@ impl<const D: usize, const DIM_OUT: usize> SweepFunction<D, [f64; D], [f64; DIM_
     fn execute_in_place(&mut self, values: &mut [[f64; DIM_OUT]], iterator: &mut crate::const_generic::iterators::grid_iterator::HashMapGridIterator<D>, _storage: &SparseGridData<D>, dimension: usize) -> Result<(), SGError> {
         // left boundary
         iterator.reset_to_left_level_zero(dimension);
-        let seq_left = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
+        let seq_left = iterator.seq().ok_or(SGError::InvalidIteratorSequence)?;
         let left_boundary = values[seq_left];
         iterator.reset_to_right_level_zero(dimension);
-        let seq_right = iterator.seq().ok_or_else(||SGError::InvalidIteratorSequence)?;
+        let seq_right = iterator.seq().ok_or(SGError::InvalidIteratorSequence)?;
         let right_boundary = values[seq_right];
         if !iterator.is_leaf()
         {

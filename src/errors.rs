@@ -13,7 +13,9 @@ pub enum SGError
     DeserializationFailed,    
     FileIOError,
     InvalidIndex,
-    InvalidIteratorSequence
+    InvalidIteratorSequence,
+    NotImplemented,
+    OperationNotSupported,
 }
 impl std::error::Error for SGError {}
 

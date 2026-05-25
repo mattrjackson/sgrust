@@ -1,7 +1,7 @@
 // Auto-generated Gauss-Legendre nodes and weights for levels 0-64
 // Nodes and weights are for the interval (0, 1)
-
-const GL_NODES: [f64; 2080] = [
+#[allow(clippy::excessive_precision)]
+static GL_NODES: [f64; 2080] = [
     5.00000000000000000e-01,
     2.11324865405187134e-01,
     7.88675134594812866e-01,
@@ -2083,8 +2083,8 @@ const GL_NODES: [f64; 2080] = [
     9.98170058385977610e-01,
     9.99652520867886141e-01
 ];
-
-const GL_WEIGHTS: [f64; 2080] = [
+#[allow(clippy::excessive_precision)]
+static GL_WEIGHTS: [f64; 2080] = [
     1.00000000000000000e+00,
     5.00000000000000000e-01,
     5.00000000000000000e-01,

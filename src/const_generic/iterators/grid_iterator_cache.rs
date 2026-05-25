@@ -24,7 +24,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
         let offset = self.offset(dim);  
         let index = self.storage.adjacency_data.left_zero[offset + index];
         if index == u32::MAX {
-            return None;
+            None
         }
         else
         {
@@ -39,7 +39,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
         let offset = self.offset(dim);  
         let index = self.storage.adjacency_data.right_zero[offset + index];
         if index == u32::MAX {
-            return None;
+            None
         }
         else
         {

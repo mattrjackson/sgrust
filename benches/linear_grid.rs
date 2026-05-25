@@ -22,7 +22,7 @@ fn build_six_d_grid() -> Result<LinearGrid<6,1>, SGError>
     
     Ok(grid)
 }
-
+#[allow(unused)]
 fn build_twelve_d_grid() -> Result<LinearGrid<12,1>, SGError>
 {
     // Build the 2D grid object, only one value per node.

@@ -2,7 +2,7 @@ use crate::utilities::float::Float;
 use crate::{basis::{base::Basis, linear::LinearBasis}, dynamic::{iterators::dynamic_grid_iterator::GridIteratorT, storage::SparseGridData}, errors::SGError};
 
 /// Maximum supported dimensions for dynamic grids (for stack allocation optimization)
-const MAX_DIM: usize = 32;
+const MAX_DIM: usize = 128;
 
 pub struct BasisEvaluation<'a>(pub &'a SparseGridData, pub usize, pub usize);
 
@@ -37,7 +37,7 @@ impl BasisEvaluation<'_>
                 {
                     return Err(SGError::InvalidIteratorSequence);
                 }
-                let node_index = iterator.index().ok_or_else(||SGError::InvalidIteratorSequence)?;
+                let node_index = iterator.index().ok_or(SGError::InvalidIteratorSequence)?;
                 #[allow(clippy::needless_range_loop)]
                 for d in 0..DIM_OUT
                 {
@@ -81,11 +81,11 @@ impl BasisEvaluation<'_>
         #[allow(non_snake_case)]
         let D = self.1;
         let bits = std::mem::size_of::<u32>() * 8;
-        if !self.0.bounding_box.contains(&point)
+        if !self.0.bounding_box.contains(point)
         {
             return Err(SGError::OutOfDomain);
         }
-        let unit_coord = self.0.bounding_box.to_unit_coordinate(&point);
+        let unit_coord = self.0.bounding_box.to_unit_coordinate(point);
         
         // Use fixed-size array to avoid heap allocation
         let mut source = [0_u32; MAX_DIM];

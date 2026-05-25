@@ -173,7 +173,7 @@ impl LinearBasis
         #[allow(clippy::needless_range_loop)]
         for dim in 0..DIM_OUT
         {
-            integral[dim] = integral[dim] * volume;
+            integral[dim] *= volume;
         }
         integral
     }
@@ -196,7 +196,7 @@ impl LinearBasis
                         num_boundaries += 1;
                     }
                 }
-                pow = pow * T::from(1.0 / (1 << num_boundaries) as f64);
+                pow *= T::from(1.0 / (1 << num_boundaries) as f64);
             }                
             #[allow(clippy::needless_range_loop)]
             for dim in 0..storage.num_outputs
@@ -207,7 +207,7 @@ impl LinearBasis
         #[allow(clippy::needless_range_loop)]
         for dim in 0..storage.num_outputs
         {
-            integral[dim] = integral[dim] * volume;
+            integral[dim] *= volume;
         }
     }
 }

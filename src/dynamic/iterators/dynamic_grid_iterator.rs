@@ -218,7 +218,7 @@ impl GridIteratorT for DynamicHashMapGridIterator<'_>
             return false;
         }
         i /= 2;
-        i += if i % 2 == 0 {1} else {0};       
+        i += if i.is_multiple_of(2) {1} else {0};       
         self.index.level[dim] = l - 1;
         self.index.index[dim] = i;
         

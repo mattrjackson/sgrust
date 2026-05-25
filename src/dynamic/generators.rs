@@ -10,15 +10,6 @@ pub trait Generator : Default
     #[allow(non_snake_case)]
     fn regular(&self, storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>;
     ///
-    /// Generates a regular sparse grid of level levels, without boundaries
-    /// where dimensions are splitted into a groups with only certain number
-    /// of dimensions completely connected in a clique.
-    /// For details about T, See pages 8-9 of Griebel and Knapek's "Optimized 
-    /// Tensor-Product Approximation Spaces".
-    /// 
-    #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T :Option<f64>) -> Result<(), SGError>;
-    ///
     /// Generates a full grid of 2^@level tensors, without boundaries
     /// 
     fn full(&self, storage: &mut SparseGridData, level: usize) -> Result<(), SGError>;
@@ -70,7 +61,6 @@ fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T
             let level_sum = point.level_sum() - 1;
             let level_max = point.level_max();
             let mut l = 1;
-            // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
             let n = levels[d] as u32;
             while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + storage.num_inputs as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n
             {
@@ -101,80 +91,6 @@ fn regular_generator_iterative(storage: &mut SparseGridData, levels: &[usize], T
 pub fn regular(storage: &mut SparseGridData, levels: &[usize], T :Option<f64>) -> Result<(), SGError>
 {
     regular_generator_iterative(storage, levels, T)
-}
-
-#[allow(non_snake_case)]
-pub fn cliques(storage: &mut SparseGridData, levels: &[usize], clique_size: usize, T: Option<f64>) -> Result<(), SGError>{
-    let mut point = GridPoint::new(&vec![1; storage.num_inputs], &vec![1; storage.num_inputs], false);
-    let t = T.unwrap_or(0.0); // default to zero (sparse grid)
-    let n = levels[0] as u32;
-    for l in 1..=n
-    {
-        for i in (1..(1 << l)).step_by(2)
-        {
-            let is_leaf = l == n;            
-            point.level[0] = l as u8;
-            point.index[0] = i;
-            point.set_is_leaf(is_leaf);
-            storage.insert_point(point.clone());
-        }
-    }
-    // Generate grid points in all other dimensions:
-    // loop dim times over intermediate grid, take all grid points and
-    // modify them in current dimension d
-    #[allow(clippy::needless_range_loop)]
-    for d in 1..storage.num_inputs
-    {
-        let ngrids = storage.len();
-        let clique_num = d / clique_size;
-        for g in 0..ngrids
-        {
-            let mut first = true;
-            let mut point: GridPoint = storage.point(g);
-            let level_sum = point.level_sum() - 1;
-            
-            let mut l = 1;
-            // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
-            let n = levels[d] as u32;
-            let mut dt = 0;
-            let mut skip = false;
-            while dt < clique_size * clique_num && dt < storage.num_inputs 
-            {
-                if point.level[d] > 1
-                {
-                    skip = true;
-                    break;
-                }
-                dt += 1;
-            }
-            if skip
-            {
-                continue;
-            }
-            let level_max = point.level_max();
-            while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= (n + storage.num_inputs as u32 - 1) as f64 - (t * n as f64)  && l.max(level_max) as u32 <= n
-            {
-                for i in (1..(1 << l)).step_by(2)
-                {
-                    let is_leaf = (l + level_sum) as u32 == n + storage.num_inputs as u32 - 1;
-                    point.level[d] = l;
-                    point.index[d] = i;
-                    point.set_is_leaf(is_leaf);
-                    if !first
-                    {
-                      storage.insert_point(point.clone());                      
-                    }
-                    else
-                    {
-                        storage.update(point.clone(), g)?;
-                        first = false;
-                    }
-                }
-                l += 1;
-            }
-        }
-    }
-    Ok(())
 }
 
 fn full_iterative(storage: &mut SparseGridData, level: usize) -> Result<(), SGError>
@@ -230,10 +146,6 @@ pub fn full(storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
     full_iterative(storage, level)
 }
 
-pub fn anisotropic_full(_storage: &mut SparseGridData, _level: &&[usize]) {
-    todo!()
-}
-
 pub fn full_with_boundaries(storage: &mut SparseGridData, level: usize) -> Result<(), SGError> {
     full_with_boundaries_iter(storage, level)?;
     storage.has_boundary = true;
@@ -247,12 +159,12 @@ pub fn regular_with_boundaries(storage: &mut SparseGridData, levels: &[usize], b
     {
         regular_with_boundaries_iter(storage, levels, Some(boundary_level), T)?;
         storage.has_boundary = true;
+        Ok(())
     }   
     else
     {
-        todo!("Need to implement recursive generator");
+        Err(SGError::NotImplemented)
     } 
-    Ok(())
 }
 
 #[allow(non_snake_case)]
@@ -344,7 +256,6 @@ fn regular_with_boundaries_iter(storage: &mut SparseGridData, levels: &[usize], 
             let level_max = point.level_max();
             let mut l = 1;
             let d = d as usize;
-            // TODO: This is the one change I've made from the SG++ implementation - allow non-uniform levels. TBD if this works or I need to revert this section.
             let n = levels[d];
             while (l + level_sum) as f64 - (t * l.max(level_max) as f64) <= upper_bound && l.max(level_max) <= n as u8
             {
@@ -444,24 +355,24 @@ fn full_with_boundaries_iter(storage: &mut SparseGridData, level: usize) -> Resu
 fn test_regular()
 {
     let mut storage = SparseGridData::new(2, 1);   
-    regular(&mut storage, &vec![3,3], Some(0.0)).expect("Could not generate grid");
+    regular(&mut storage, &[3,3], Some(0.0)).expect("Could not generate grid");
     assert_eq!(storage.len(), 17);
 }
 #[test]
 fn test_truncated_boundaries_1d()
 {
     let mut storage = SparseGridData::new(1, 1);
-    regular_with_boundaries(&mut storage,&vec! [2], Some(1), None).expect("Could not generate grid");
+    regular_with_boundaries(&mut storage, &[2], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage.len(), 5);
 }
 #[test]
 fn test_truncated_boundaries_2d()
 {
     let mut storage = SparseGridData::new(2,1);
-    regular_with_boundaries(&mut storage, &vec![2,2], Some(1), None).expect("Could not generate grid");
+    regular_with_boundaries(&mut storage, &[2,2], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage.len(), 21);
     let mut storage2 = SparseGridData::new(2,1);
-    regular_with_boundaries(&mut storage2, &vec![3,3], Some(1), None).expect("Could not generate grid");
+    regular_with_boundaries(&mut storage2, &[3,3], Some(1), None).expect("Could not generate grid");
     assert_eq!(storage2.len(), 49);   
     assert!(storage2.contains(&GridPoint::new(&[1,1], &[1,1], false)));
     assert!(storage2.contains(&GridPoint::new(&[1,2], &[1,1], false)));

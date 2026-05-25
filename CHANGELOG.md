@@ -9,6 +9,23 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.6]
+
+### Added
+Added global adaptive refinement support for `CombinationSparseGrid`, including refinement proposals, applying externally evaluated candidate values, and the `refine_with` convenience method.
+
+### Changed
+Updated `CombinationSparseGrid` generation to track tensor index sets and rebuild combination weights from the index set, allowing incremental sparse/full grid generation to match a fresh rebuild.
+Updated combination-grid interpolation to correctly transform bounding-box coordinates to unit coordinates.
+Added automatic 1D interpolation fast paths for dynamic and const-generic `LinearGrid` implementations, bypassing the general recursive iterator traversal for one-dimensional grids.
+Optimized 1D `LinearGrid` cases, which now rely on interpolating directly between coordinate-sorted nodal values, with O(1) interval lookup for uniform 1D grids and binary-search fallback for non-uniform refined grids. In a 4097-node 1D boundary-grid interpolation benchmark, the direct interval path reduced dynamic interpolation time from about 139 ns/call to 21 ns/call (6.76x faster than the old recursive path), while const-generic interpolation improved from about 45 ns/call to 14 ns/call (3.28x faster than the full recursive path).
+Cleaned up `CombinationSparseGrid::integral_fast()` by passing the values slice directly to `ArrayView2::from_shape()`.
+Cleaned up a combination-grid integration test by removing a redundant default struct update from `GenerationOptions`.
+Other changed files are cleanup for clippy warnings.
+
+### Removed
+Removed the `kdtree` dependency from combination-grid node lookup. The combination grid construction instead uses a hash-map based node lookup using unit-coordinate keys.
+
 # [0.8.5] — 2026-03-16
 
 ### Breaking

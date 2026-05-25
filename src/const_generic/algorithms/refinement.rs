@@ -90,6 +90,7 @@ fn iterate_refinable_points<const D: usize, Op: FnMut((usize, &GridPoint<D>))>(s
     {
         let parent = point;
         let mut point = *point;
+        #[allow(clippy::needless_range_loop)]
         for d in 0..D
         {               
             if point.level[d] >= level_limits[d]  
@@ -256,9 +257,9 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
         let index = point.index[dim];
         if level > 1
         {
-            if((index + 1) / 2) % 2 == 1
+            if index.div_ceil(2) % 2 == 1
             {
-                point.index[dim] = (index + 1) / 2;
+                point.index[dim] = index.div_ceil(2);
                 point.level[dim] = level - 1;
             }
             else 
@@ -284,12 +285,9 @@ impl<const D: usize, const DIM_OUT: usize> BaseRefinement<D, DIM_OUT>
             }
 
             // For anisotropic refinement, only refine dimensions with high error
-            if let Some(errors) = dim_errors
+            if let Some(errors) = dim_errors && errors[dim] <= threshold
             {
-                if errors[dim] <= threshold
-                {
-                    continue; // skip this dimension, error is too low
-                }
+                continue; // skip this dimension, error is too low
             }
 
             self.refine_1d(storage, point, dim);

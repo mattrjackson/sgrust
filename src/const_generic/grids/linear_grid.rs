@@ -19,11 +19,6 @@ impl<const D: usize> Generator<D> for LinearGridGenerator<D>
         regular(storage, levels, T)
     }
 
-    #[allow(non_snake_case)]
-    fn cliques(&self, storage: &mut SparseGridData<D>, levels: [usize; D], clique_size: usize, T :Option<f64>) -> Result<(), SGError> {
-        cliques(storage, levels, clique_size, T)
-    }
-
     fn full(&self, storage: &mut SparseGridData<D>, level: usize) -> Result<(), SGError>{
        full(storage, level)
     }
@@ -330,6 +325,7 @@ impl<const D: usize, const DIM_OUT: usize> LinearGrid<D, DIM_OUT>
     pub fn update_adjacency_data(&mut self)
     {
         self.base_mut().storage.generate_adjacency_data();
+        self.base_mut().update_1d_interpolation_data();
     }
     
 }
@@ -844,6 +840,7 @@ fn check_lopsided_anisotropic_boundary_refinement()
     let mut max_levels = [0u8; 3];
     for node in grid_aniso.storage().nodes().iter()
     {
+        #[allow(clippy::needless_range_loop)]
         for d in 0..3
         {
             max_levels[d] = max_levels[d].max(node.level[d]);
@@ -987,7 +984,7 @@ fn check_boundary_coarsen_constant_grid_reduces_to_corners()
 
     let mut nodes = grid.storage().nodes().clone();
     nodes.sort();
-    let expected = vec![
+    let expected = [
         crate::const_generic::storage::GridPoint::new([0, 0], [0, 0], true),
         crate::const_generic::storage::GridPoint::new([0, 0], [0, 1], true),
         crate::const_generic::storage::GridPoint::new([0, 0], [1, 0], true),

@@ -1,11 +1,11 @@
 use crate::errors::SGError;
 use crate::utilities::float::Float;
 
-use crate::{basis::{base::Basis, linear::LinearBasis}, dynamic::{iterators::dynamic_grid_iterator::GridIteratorT, storage::SparseGridData}};
+use crate::{basis::{base::Basis, linear::LinearBasis}, dynamic::{iterators::dynamic_grid_iterator::GridIteratorT}};
 
 #[inline]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIteratorT>(storage: &SparseGridData, x: &[f64], 
+pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIteratorT>(x: &[f64], 
     dim: usize, value: T, iterator: &mut Iterator, alpha: &[T], result: &mut [T], ndim: usize, num_outputs: usize) -> Result<(), SGError>
 {
     // LinearBasis is a zero-sized type, create it inline instead of passing as parameter
@@ -13,7 +13,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
     let mut level = 0;
     loop
     {
-        let node_index = iterator.index().ok_or_else(||SGError::InvalidIndex)?;
+        let node_index = iterator.index().ok_or(SGError::InvalidIndex)?;
         let work_index = iterator.point_index(dim);        
         if level > 0
         {
@@ -28,7 +28,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
             }
             else 
             {
-                eval_boundary(storage, x, dim + 1, value * new_value, iterator, alpha, result, ndim, num_outputs)?;    
+                eval_boundary(x, dim + 1, value * new_value, iterator, alpha, result, ndim, num_outputs)?;    
             }
         }
         else
@@ -38,7 +38,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
             // reset_to_left_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.            
             if iterator.reset_to_left_level_zero(dim)
             {
-                let seq_l = iterator.index().ok_or_else(||SGError::InvalidIndex)?;
+                let seq_l = iterator.index().ok_or(SGError::InvalidIndex)?;
                 let new_value_l = T::from(basis.eval(0, 0, x[dim]));
                 if dim == ndim - 1
                 {
@@ -50,13 +50,13 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
                 }
                 else 
                 {
-                    eval_boundary(storage, x, dim + 1, value * new_value_l, iterator, alpha, result, ndim, num_outputs)?;
+                    eval_boundary(x, dim + 1, value * new_value_l, iterator, alpha, result, ndim, num_outputs)?;
                 }
             }
             // reset_to_right_level_zero now checks if the node exists - after grid coarsening some boundary nodes are removed.
             if iterator.reset_to_right_level_zero(dim)
             {
-                let seq_r = iterator.index().ok_or_else(||SGError::InvalidIndex)?;
+                let seq_r = iterator.index().ok_or(SGError::InvalidIndex)?;
                 let new_value_r = T::from(basis.eval(0, 1, x[dim]));
                 if dim == ndim - 1
                 {
@@ -68,7 +68,7 @@ pub(crate) fn eval_boundary<T: Float +std::ops::AddAssign, Iterator: GridIterato
                 }
                 else 
                 {
-                    eval_boundary(storage, x, dim + 1, value * new_value_r, iterator, alpha, result, ndim, num_outputs)?;
+                    eval_boundary(x, dim + 1, value * new_value_r, iterator, alpha, result, ndim, num_outputs)?;
                 }
             }
         }

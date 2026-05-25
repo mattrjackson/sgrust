@@ -2,10 +2,16 @@ use std::cmp::Ordering;
 
 use crate::errors::SGError;
 
+type TensorOrderings = Vec<Vec<u32>>;
+type SegmentBoundaries = Vec<Vec<u32>>;
+
 ///
 /// Sot level sets lexographically.. Used by `weight_modifiers`.
 /// 
-fn sort_level_sets(level_sets: &[u32], ndim: usize) -> Result<(Vec<Vec<u32>>, Vec<Vec<u32>>), SGError> {
+fn sort_level_sets(
+    level_sets: &[u32],
+    ndim: usize,
+) -> Result<(TensorOrderings, SegmentBoundaries), SGError> {
     let num_tensors = level_sets.len() / ndim;
     let num_levels = level_sets
         .chunks(ndim)
@@ -44,11 +50,11 @@ fn sort_level_sets(level_sets: &[u32], ndim: usize) -> Result<(Vec<Vec<u32>>, Ve
         });
 
         // Identify boundary positions (segments) where levels differ outside `dim`
-        let mut current_idx = level_sets.chunks(ndim).nth(sorted_maps[dim][0] as usize).ok_or_else(||SGError::InvalidIndex)?;
+        let mut current_idx = level_sets.chunks(ndim).nth(sorted_maps[dim][0] as usize).ok_or(SGError::InvalidIndex)?;
         lines_1d[dim].push(0);
 
         for (i, &tensor) in sorted_maps[dim].iter().enumerate().skip(1) {
-            let next_idx = level_sets.chunks(ndim).nth(tensor as usize).ok_or_else(||SGError::InvalidIndex)?;
+            let next_idx = level_sets.chunks(ndim).nth(tensor as usize).ok_or(SGError::InvalidIndex)?;
             if !match_outside_dim(dim, current_idx, next_idx) {
                 lines_1d[dim].push(i as u32);
                 current_idx = next_idx;

@@ -149,7 +149,7 @@ where
 
 /// Serialize data to bytes using the specified format.
 #[cfg(feature = "rkyv")]
-pub fn serialize<T: Serialize>(data: &T, format: SerializationFormat) -> Result<Vec<u8>, SGError> 
+pub fn serialize<T>(data: &T, format: SerializationFormat) -> Result<Vec<u8>, SGError> 
 where 
     T: Serialize + for<'a> rkyv::Serialize<HighSerializer<'a, rkyv::rancor::Error>>,
 {
@@ -184,7 +184,7 @@ pub fn serialize<T: Serialize>(data: &T, format: SerializationFormat) -> Result<
 }
 
 #[cfg(feature = "rkyv")]
-pub fn deserialize<T: DeserializeOwned>(data: &[u8], format: SerializationFormat) -> Result<T, SGError> where 
+pub fn deserialize<T>(data: &[u8], format: SerializationFormat) -> Result<T, SGError> where 
     T: DeserializeOwned + rkyv::Archive,
     T::Archived: rkyv::Deserialize<T, HighDeserializer<rkyv::rancor::Error>>
         + for<'a> rkyv::bytecheck::CheckBytes<HighValidator<'a, rkyv::rancor::Error>>,{
