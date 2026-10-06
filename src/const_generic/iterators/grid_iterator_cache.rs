@@ -10,7 +10,6 @@ pub(crate) struct AdjacencyGridIterator<'a, const D: usize>
 {
     pub(crate) seq: usize,
     storage: &'a SparseGridData<D>,
-    is_leaf: bool,
 }
 
 
@@ -48,7 +47,7 @@ impl<'a, const D: usize> AdjacencyGridIterator<'a, D>
     }
     pub(crate) fn new(storage: &'a SparseGridData<D>) -> Self
     {
-        Self { seq: 0, storage, is_leaf: storage[0].is_leaf() }
+        Self { seq: 0, storage }
     }
     #[inline(always)]
     fn offset(&self, dim: usize) -> usize
@@ -79,7 +78,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     fn reset_to_level_zero(&mut self) -> bool
     {
         self.seq = self.storage.adjacency_data.zero_index;
-        self.is_leaf = self.storage[self.storage.adjacency_data.zero_index].is_leaf();
         true
     }
     #[inline]
@@ -88,7 +86,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         if let Some(index) = self.compute_lzero(dim)
         {
             self.seq = index as usize;
-            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
             true
         }
         else
@@ -102,7 +99,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         if let Some(index) = self.compute_rzero(dim)
         {
             self.seq = index as usize;
-            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
             true
         }
         else
@@ -120,7 +116,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
             return false;
         }
         self.seq = index as usize;
-        self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index as usize].is_leaf();
         true
     }
     #[inline]
@@ -131,7 +126,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + adj.down_left()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index].is_leaf();
             true
         }
         else
@@ -147,7 +141,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + adj.down_right()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage.adjacency_data[self.offset(dim) + index].is_leaf();
             true
         }
         else
@@ -159,7 +152,11 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     #[inline]
     fn is_leaf(&self) -> bool
     {
-        self.is_leaf
+        // Leaf state belongs to the whole point, as in HashMapGridIterator.
+        // Recursive evaluation changes dimensions on entry and return; the
+        // last move's adjacency leaf flag cannot stop another dimension's traversal.
+        // At level zero, traversal also uses level_one rather than child links.
+        self.storage[self.seq].is_leaf()
     }
     
     fn index(&self) ->  Option<usize> {
@@ -173,7 +170,6 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
         {
             let index = (self.seq as i64 + self.storage.adjacency_data[offset + self.seq].up()) as usize;
             self.seq = index;
-            self.is_leaf = self.storage.adjacency_data[offset + index].is_leaf();
             true
         }
         else
@@ -188,5 +184,91 @@ impl<const D: usize> GridIteratorT<D> for AdjacencyGridIterator<'_, D>
     
     fn point(&self) -> &GridPoint<D> {
         &self.storage[self.seq]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::const_generic::{
+        algorithms::refinement::{RefinementFunctor, RefinementOptions},
+        grids::linear_grid::LinearGrid,
+        iterators::grid_iterator::HashMapGridIterator,
+        storage::PointIterator,
+    };
+
+    struct RefineBoundary;
+    impl RefinementFunctor<3, 1> for RefineBoundary {
+        fn eval(&self, points: PointIterator<3>, _: &[[f64; 1]], _: &[[f64; 1]]) -> Vec<f64> {
+            points
+                .map(|p| if p == [0.25, 0.5, 1.0] { 1.0 } else { 0.0 })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn cached_moves_and_leaf_state_match_hash_iterator_after_asymmetric_refinement() {
+        let mut grid = LinearGrid::<3, 1>::new();
+        grid.full_grid_with_boundaries(2).unwrap();
+        grid.update_values(&|p| [p.iter().map(|v| v * v).sum()]);
+        grid.refine_iteration(&RefineBoundary, RefinementOptions::new(0.1));
+        grid.update_values(&|p| [p.iter().map(|v| v * v).sum()]);
+        let storage = grid.storage();
+        // Check every cached adjacency against independent hash lookup. A failed
+        // cached move leaves the iterator in place; a hash move can become invalid.
+        for (seq, point) in storage.nodes().iter().enumerate() {
+            for dim in 0..3 {
+                for movement in 0..6 {
+                    let mut cached = AdjacencyGridIterator::new(storage);
+                    cached.seq = seq;
+                    let mut hashed = HashMapGridIterator::new(storage);
+                    hashed.set_index(*point);
+                    assert_eq!(cached.is_leaf(), hashed.is_leaf());
+                    let moved = match movement {
+                        0 => (cached.left_child(dim), hashed.left_child(dim)),
+                        1 => (cached.right_child(dim), hashed.right_child(dim)),
+                        2 => (cached.up(dim), hashed.up(dim)),
+                        3 => (
+                            cached.reset_to_left_level_zero(dim),
+                            hashed.reset_to_left_level_zero(dim),
+                        ),
+                        4 => (
+                            cached.reset_to_right_level_zero(dim),
+                            hashed.reset_to_right_level_zero(dim),
+                        ),
+                        _ => (
+                            cached.reset_to_level_one(dim),
+                            hashed.reset_to_level_one(dim),
+                        ),
+                    };
+                    assert_eq!(
+                        moved.0, moved.1,
+                        "point {point:?}, dim {dim}, move {movement}"
+                    );
+                    if moved.0 {
+                        assert_eq!(cached.index(), hashed.index());
+                        assert_eq!(
+                            cached.is_leaf(),
+                            hashed.is_leaf(),
+                            "point {point:?}, dim {dim}, move {movement}"
+                        );
+                    }
+                }
+            }
+        }
+        // Recreate the return from recursive dimension-2 evaluation: it resets
+        // z to the left boundary, which has no z children but does have a y root.
+        let seq = storage
+            .points()
+            .position(|p| p == [0.125, 1.0, 1.0])
+            .unwrap();
+        let mut cached = AdjacencyGridIterator::new(storage);
+        cached.seq = seq;
+        assert!(cached.reset_to_left_level_zero(2));
+        let adj = &storage.adjacency_data[2 * storage.len() + cached.seq];
+        assert!(adj.is_leaf());
+        assert!(!cached.is_leaf());
+        assert!(cached.reset_to_level_one(1));
+        assert_eq!(cached.point().unit_coordinate(), [0.125, 0.5, 0.0]);
     }
 }

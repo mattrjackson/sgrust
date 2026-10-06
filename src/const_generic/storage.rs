@@ -508,6 +508,7 @@ pub struct SparseGridData<const D: usize>
     #[cfg_attr(feature = "rkyv", rkyv(with = Skip))]
     pub(crate) adjacency_data: NodeAdjacencyData,    
     pub(crate) has_boundary: bool,    
+    #[serde(skip_serializing, skip_deserializing)]
     pub(crate) map: FastU64Map<u32>
 }
 

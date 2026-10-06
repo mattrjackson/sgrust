@@ -13,6 +13,8 @@ pub trait GridIteratorT<const D: usize>
     fn right_child(&mut self, dim: usize) -> bool;
     fn up(&mut self, dim: usize) -> bool;
     fn is_inner_point(&self) -> bool;
+    /// Whether the current point has no children in any dimension.
+    /// Recursive traversals may resume in a different dimension from the last move.
     fn is_leaf(&self) -> bool;
 
 }

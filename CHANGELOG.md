@@ -9,6 +9,11 @@
 ### Removed
 ### Fixed
 -->
+# [0.8.7]
+
+### Fixed
+Fixed cached const-generic linear-grid interpolation when points have different child structure across dimensions, including asymmetrically refined boundary grids and unrefined full grids without boundaries. Recursive evaluation now uses the current point's leaf state across all dimensions instead of the leaf state of the last dimension visited. This also fixes immutable `f32`/`f64` evaluation and boundary traversal after recursive resets, without changing coefficients or adjacency storage.
+
 # [0.8.6]
 
 ### Added
